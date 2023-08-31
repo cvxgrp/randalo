@@ -6,25 +6,15 @@ In a folder run the following:
 ```
 git clone git@github.com:cvxgrp/alo.git
 cd alo
+
+# create a new environment with torch & friends (could also use conda or similar)
 python -m venv venv
 . venv/bin/activate
 
 pip install wheel
 pip install torch numpy scipy matplotlib
 
-cd ..
-
-git clone git@github.com:cvxgrp/SURE-CR.git
-cd SURE-CR
-git checkout xtrace
-pip install -e .
-
-cd ..
-
-git clone git@github.com:cvxgrp/torch_linops.git
-cd torch_linops
-pip install -e .
-
-cd ../alo
+pip install git+ssh://git@github.com/cvxgrp/SURE-CR.git@xtrace
+pip install git+ssh://git@github.com/cvxgrp/torch_linops.git
 pip install -e .
 ```
