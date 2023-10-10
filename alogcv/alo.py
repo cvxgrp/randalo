@@ -151,3 +151,67 @@ class ALOBKS(ALOBase):
             # print(1 - ((yys - ys) ** 2 @ (np.ones(len(ys)))) / (np.var(ys) * len(ys)))
             return poly.coef[0]
 
+class ALOBKSWithVarEstimation(ALOBKS):
+    def __init__(
+        self,
+        loss_fun: Callable[[Tensor, Tensor], Tensor],
+        y: Tensor,
+        y_hat: Tensor,
+        jac: LinearOperator,
+        m: int,
+        generator: torch.Generator = None,
+    ):
+        super().__init__(loss_fun, y, y_hat, jac, m, generator)
+
+    def eval_risk(
+        self,
+        risk: Callable[[Tensor, Tensor], Tensor],
+        order: Optional[int] = 1,
+        power: float = 1.0,
+    ) -> float:
+        if order is None:
+            return risk(self._y, self.y_tilde(self._best_diag_jac)).mean().item()
+        else:
+            assert self.m > 1
+            m0 = self.m // 2
+
+            xs = 1 / np.arange(m0, self.m) ** power
+            ys = np.zeros_like(xs)
+            zs = np.zeros_like(xs)
+            diag_jac = self._diag_jac_estims[:, :m0].mean(dim=1)
+            ys[0] = risk(self._y, self.y_tilde(diag_jac)).mean().item()
+            zs[0] = diag_jac.var().item()
+
+            for i in np.linspace(1, self.m - m0 - 1, 50).astype(int):
+                m = m0 + i
+                # diag_jac = (diag_jac * (m - 1) + self._diag_jac_estims[:, m - 1]) / m
+                diag_jac = self._diag_jac_estims[
+                    :, np.random.choice(self.m, m, replace=False)
+                ].mean(dim=1)
+                ys[i] = risk(self._y, self.y_tilde(diag_jac)).mean().item()
+                zs[i] = diag_jac.var().item()
+
+            domain = [xs[0], xs[-1]]
+            poly, (resid, *_) = Polynomial.fit(
+                xs,
+                ys,
+                deg=order,
+                w=1 / xs**0,
+                full=True,
+                domain=domain,
+                window=domain,
+            )
+            yys = poly(xs)
+            var_poly, (var_resid, *_) = Polynomial.fit(
+                zs,
+                ys,
+                deg=order,
+                w=1 / xs**0,
+                full=True,
+                domain=domain,
+                window=domain,
+            )
+            self.variance_of_estimate = var_poly.coef[1]
+            # print(1 - ((yys - ys) ** 2 @ (np.ones(len(ys)))) / (np.var(ys) * len(ys)))
+            return poly.coef[0]
+
