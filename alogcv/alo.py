@@ -170,7 +170,7 @@ class ALOBKSWithVarEstimation(ALOBKS):
         power: float = 1.0,
     ) -> float:
         if order is None:
-            return risk(self._y, self.y_tilde(self._best_diag_jac)).mean().item()
+            return risk(self._y, self.y_tilde(self._best_diag_jac)).sum().item()
         else:
             assert self.m > 1
             m0 = self.m // 2
@@ -179,7 +179,7 @@ class ALOBKSWithVarEstimation(ALOBKS):
             ys = np.zeros_like(xs)
             zs = np.zeros_like(xs)
             diag_jac = self._diag_jac_estims[:, :m0].mean(dim=1)
-            ys[0] = risk(self._y, self.y_tilde(diag_jac)).mean().item()
+            ys[0] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
             zs[0] = diag_jac.var().item()
 
             for i in np.linspace(1, self.m - m0 - 1, 50).astype(int):
@@ -188,7 +188,7 @@ class ALOBKSWithVarEstimation(ALOBKS):
                 diag_jac = self._diag_jac_estims[
                     :, np.random.choice(self.m, m, replace=False)
                 ].mean(dim=1)
-                ys[i] = risk(self._y, self.y_tilde(diag_jac)).mean().item()
+                ys[i] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
                 zs[i] = diag_jac.var().item()
 
             domain = [xs[0], xs[-1]]
@@ -205,7 +205,7 @@ class ALOBKSWithVarEstimation(ALOBKS):
             var_poly, (var_resid, *_) = Polynomial.fit(
                 zs,
                 ys,
-                deg=order,
+                deg=1,
                 w=1 / xs**0,
                 full=True,
                 domain=domain,

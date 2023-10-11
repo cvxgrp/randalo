@@ -10,10 +10,10 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 
-from alo import ALOExact, ALOBKS
+from alo import ALOExact, ALOBKS, ALOBKSWithVarEstimation
 
-n = 1000
-p = 2000
+n = 2000
+p = 1000
 sigma = 1
 lamdas = np.logspace(-2.5, 0, 30)
 ms = [30, 50, 100]
@@ -48,6 +48,8 @@ risks_loo_shortcut = np.zeros(len(lamdas))
 risks_bks = np.zeros((len(lamdas), len(ms), n_trials))
 risks_poly = np.zeros((len(lamdas), len(ms), n_trials))
 
+var_bks = np.zeros((len(lamdas), len(ms), n_trials))
+
 for i, lamda in enumerate(tqdm(lamdas)):
     lasso = Lasso(lamda)
     lasso.fit(X, y)
@@ -73,9 +75,10 @@ for i, lamda in enumerate(tqdm(lamdas)):
 
     for j, m in enumerate(ms):
         for trial in range(n_trials):
-            alo_bks = ALOBKS(loss_fun, y, y_hat, H, m)
+            alo_bks = ALOBKSWithVarEstimation(loss_fun, y, y_hat, H, m)
             risks_bks[i, j, trial] = alo_bks.eval_risk(risk, order=None) / n
             risks_poly[i, j, trial] = alo_bks.eval_risk(risk, order=1) / n
+            var_bks[i, j, trial] = alo_bks.variance_of_estimate
     # print(alo_bks.eval_risk(risk, order=None))
     # print(alo_bks.eval_risk(risk, order=1))
 
@@ -84,7 +87,6 @@ plt.plot(lamdas, risks_alo, "k", label="alo")
 # plt.plot(lamdas, risks_loo_shortcut, label="loo_shortcut")
 
 ylim = plt.ylim()
-
 color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 for j, m in enumerate(ms):
     # errorbar
@@ -114,4 +116,27 @@ plt.xlabel("$\lambda$")
 plt.ylabel("Risk")
 
 plt.show()
+
+
+color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+for j, m in enumerate(ms):
+    # errorbar
+    plt.errorbar(
+        lamdas,
+        var_bks[:, j, :].mean(axis=1),
+        yerr=var_bks[:, j, :].std(axis=1),
+        label=f"bks_{m}",
+        color=color_cycle[j],
+    )
+
+plt.legend()
+plt.xscale("log")
+
+plt.title(f"Diagonal Estimation Variance for LASSO Regression, ${n=}$, ${p=}$, $\\sigma={sigma}$")
+plt.xlabel("$\lambda$")
+plt.ylabel("Risk")
+
+plt.show()
+
+
 
