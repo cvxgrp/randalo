@@ -175,23 +175,30 @@ class ALOBKSWithVarEstimation(ALOBKS):
             assert self.m > 1
             m0 = self.m // 2
 
-            xs = 1 / np.arange(m0, self.m) ** power
-            ys = np.zeros_like(xs)
-            zs = np.zeros_like(xs)
-            diag_jac = self._diag_jac_estims[:, :m0].mean(dim=1)
-            ys[0] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
-            zs[0] = diag_jac.var().item()
-
-            for i in np.linspace(1, self.m - m0 - 1, 50).astype(int):
+            xs = np.zeros(50)
+            ys = np.zeros(50)
+            x_vars = np.zeros(50)
+            variances = np.zeros(50)
+            #diag_jac = self._diag_jac_estims[:, :m0].mean(dim=1)
+            #ys[0] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
+            #variances[0] = diag_jac.var().item()
+            cnt_gt_one = 0
+            for idx, i in enumerate(np.linspace(1, self.m - m0 - 1, 50).astype(int)):
                 m = m0 + i
+                xs[idx] = 1 / m**power
                 # diag_jac = (diag_jac * (m - 1) + self._diag_jac_estims[:, m - 1]) / m
                 diag_jac = self._diag_jac_estims[
                     :, np.random.choice(self.m, m, replace=False)
                 ].mean(dim=1)
-                ys[i] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
-                zs[i] = diag_jac.var().item()
+                ys[idx] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
 
-            domain = [xs[0], xs[-1]]
+                x_vars[idx] = 1 / m
+                variances[idx] = diag_jac.var().item()
+                if diag_jac.max().item() > 1:
+                    cnt_gt_one += 1
+
+            print(cnt_gt_one)
+            domain = [xs[-1], xs[0]]
             poly, (resid, *_) = Polynomial.fit(
                 xs,
                 ys,
@@ -201,17 +208,22 @@ class ALOBKSWithVarEstimation(ALOBKS):
                 domain=domain,
                 window=domain,
             )
+            import matplotlib.pyplot as plt
+            plt.plot(xs, ys)
+            plt.yscale('log')
+            plt.show()
             yys = poly(xs)
+            domain = [x_vars[-1], x_vars[0]]
             var_poly, (var_resid, *_) = Polynomial.fit(
-                zs,
-                ys,
+                x_vars,
+                variances,
                 deg=1,
                 w=1 / xs**0,
                 full=True,
                 domain=domain,
                 window=domain,
             )
-            self.variance_of_estimate = var_poly.coef[1]
+            self.variance_of_estimate = var_poly.coef[1] / m
             # print(1 - ((yys - ys) ** 2 @ (np.ones(len(ys)))) / (np.var(ys) * len(ys)))
             return poly.coef[0]
 
