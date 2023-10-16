@@ -9,6 +9,7 @@ from torch import autograd, Tensor
 import linops as lo
 from linops import LinearOperator
 
+import utils
 
 # Loss function: is a function from R^n \times R^n to R^n that operates on pairs
 
@@ -124,106 +125,35 @@ class ALOBKS(ALOBase):
             assert self.m > 1
             m0 = self.m // 2
 
-            xs = 1 / np.arange(m0, self.m) ** power
-            ys = np.zeros_like(xs)
-            diag_jac = self._diag_jac_estims[:, :m0].mean(dim=1)
-            ys[0] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
-
-            for i in np.linspace(1, self.m - m0 - 1, 50).astype(int):
-                m = m0 + i
-                # diag_jac = (diag_jac * (m - 1) + self._diag_jac_estims[:, m - 1]) / m
-                diag_jac = self._diag_jac_estims[
-                    :, np.random.choice(self.m, m, replace=False)
-                ].mean(dim=1)
-                ys[i] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
-
-            domain = [xs[0], xs[-1]]
-            poly, (resid, *_) = Polynomial.fit(
-                xs,
-                ys,
-                deg=order,
-                w=1 / xs**0,
-                full=True,
-                domain=domain,
-                window=domain,
-            )
-            yys = poly(xs)
-            # print(1 - ((yys - ys) ** 2 @ (np.ones(len(ys)))) / (np.var(ys) * len(ys)))
-            return poly.coef[0]
-
-class ALOBKSWithVarEstimation(ALOBKS):
-    def __init__(
-        self,
-        loss_fun: Callable[[Tensor, Tensor], Tensor],
-        y: Tensor,
-        y_hat: Tensor,
-        jac: LinearOperator,
-        m: int,
-        generator: torch.Generator = None,
-    ):
-        super().__init__(loss_fun, y, y_hat, jac, m, generator)
-
-    def eval_risk(
-        self,
-        risk: Callable[[Tensor, Tensor], Tensor],
-        order: Optional[int] = 1,
-        power: float = 1.0,
-    ) -> float:
-        if order is None:
-            return risk(self._y, self.y_tilde(self._best_diag_jac)).sum().item()
-        else:
-            assert self.m > 1
-            m0 = self.m // 2
-
             xs = np.zeros(50)
             ys = np.zeros(50)
-            x_vars = np.zeros(50)
-            variances = np.zeros(50)
-            #diag_jac = self._diag_jac_estims[:, :m0].mean(dim=1)
-            #ys[0] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
-            #variances[0] = diag_jac.var().item()
-            cnt_gt_one = 0
-            for idx, i in enumerate(np.linspace(1, self.m - m0 - 1, 50).astype(int)):
+
+            it = iter(enumerate(np.linspace(1, self.m - m0 - 1, 50).astype(int)))
+            total_attempts = 0
+            finished = True
+            while True:
+                total_attempts += 1
+                if total_attempts > 75:
+                    print(f'Failed! {self.m=}')
+                    return np.nan
+                if finished:
+                    try:
+                        idx, i = next(it)
+                    except StopIteration:
+                        break
+                    finished = False
                 m = m0 + i
                 xs[idx] = 1 / m**power
                 # diag_jac = (diag_jac * (m - 1) + self._diag_jac_estims[:, m - 1]) / m
                 diag_jac = self._diag_jac_estims[
                     :, np.random.choice(self.m, m, replace=False)
                 ].mean(dim=1)
+                if (self._d2loss_dboth + self._d2loss_dy_hat2 * diag_jac >= 0).any():
+                    continue
+
                 ys[idx] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
+                finished = True
 
-                x_vars[idx] = 1 / m
-                variances[idx] = diag_jac.var().item()
-                if diag_jac.max().item() > 1:
-                    cnt_gt_one += 1
+            coefs, residual_norm = utils.robust_poly_fit(xs, ys, order)
 
-            print(cnt_gt_one)
-            domain = [xs[-1], xs[0]]
-            poly, (resid, *_) = Polynomial.fit(
-                xs,
-                ys,
-                deg=order,
-                w=1 / xs**0,
-                full=True,
-                domain=domain,
-                window=domain,
-            )
-            import matplotlib.pyplot as plt
-            plt.plot(xs, ys)
-            plt.yscale('log')
-            plt.show()
-            yys = poly(xs)
-            domain = [x_vars[-1], x_vars[0]]
-            var_poly, (var_resid, *_) = Polynomial.fit(
-                x_vars,
-                variances,
-                deg=1,
-                w=1 / xs**0,
-                full=True,
-                domain=domain,
-                window=domain,
-            )
-            self.variance_of_estimate = var_poly.coef[1] / m
-            # print(1 - ((yys - ys) ** 2 @ (np.ones(len(ys)))) / (np.var(ys) * len(ys)))
-            return poly.coef[0]
-
+            return coefs[0]

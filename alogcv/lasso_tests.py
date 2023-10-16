@@ -10,7 +10,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 
-from alo import ALOExact, ALOBKS, ALOBKSWithVarEstimation
+from alo import ALOExact, ALOBKS #, ALOBKSWithVarEstimation
 
 n = 2000
 p = 1800
@@ -48,8 +48,8 @@ risks_loo_shortcut = np.zeros(len(lamdas))
 risks_bks = np.zeros((len(lamdas), len(ms), n_trials))
 risks_poly = np.zeros((len(lamdas), len(ms), n_trials))
 
-var_bks = np.zeros((len(lamdas), len(ms), n_trials))
-oneminushoverstdbks = np.zeros((len(lamdas), len(ms), n_trials))
+#var_bks = np.zeros((len(lamdas), len(ms), n_trials))
+#oneminushoverstdbks = np.zeros((len(lamdas), len(ms), n_trials))
 
 for i, lamda in enumerate(tqdm(lamdas)):
     lasso = Lasso(lamda)
@@ -77,11 +77,9 @@ for i, lamda in enumerate(tqdm(lamdas)):
     for j, m in enumerate(ms):
         for trial in range(n_trials):
             print(lamda)
-            alo_bks = ALOBKSWithVarEstimation(loss_fun, y, y_hat, H, m)
+            alo_bks = ALOBKS(loss_fun, y, y_hat, H, m)
             risks_bks[i, j, trial] = alo_bks.eval_risk(risk, order=None) / n
             risks_poly[i, j, trial] = alo_bks.eval_risk(risk, order=1) / n
-            var_bks[i, j, trial] = alo_bks.variance_of_estimate
-            oneminushoverstdbks[i, j, trial] = (1 - h).min().item() / np.sqrt(alo_bks.variance_of_estimate)
     # print(alo_bks.eval_risk(risk, order=None))
     # print(alo_bks.eval_risk(risk, order=1))
 
@@ -120,31 +118,3 @@ plt.ylabel("Risk")
 
 plt.show()
 
-
-color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-for j, m in enumerate(ms):
-    # errorbar
-    #plt.errorbar(
-    #    lamdas,
-    #    var_bks[:, j, :].mean(axis=1),
-    #    yerr=var_bks[:, j, :].std(axis=1),
-    #    label=f"bks_{m}",
-    #    color=color_cycle[j],
-    #)
-    plt.errorbar(
-        lamdas,
-        oneminushoverstdbks[:, j, :].mean(axis=1),
-        yerr=oneminushoverstdbks[:, j, :].std(axis=1),
-        label=f"bks_{m}",
-        color=color_cycle[j],
-    )
-
-plt.legend()
-plt.xscale("log")
-plt.yscale("log")
-
-plt.title(f"1 - h_max over diagonal estimation std for LASSO Regression, ${n=}$, ${p=}$, $\\sigma={sigma}$")
-plt.xlabel("$\lambda$")
-plt.ylabel("Risk")
-
-plt.show()
