@@ -2,6 +2,7 @@ from typing import Callable, Optional
 
 import numpy as np
 from numpy.polynomial.polynomial import Polynomial
+from scipy import stats
 
 import torch
 from torch import autograd, Tensor
@@ -12,6 +13,7 @@ from linops import LinearOperator
 import utils
 
 # Loss function: is a function from R^n \times R^n to R^n that operates on pairs
+
 
 class ALOBase(object):
     def __init__(
@@ -136,7 +138,7 @@ class ALOBKS(ALOBase):
             while True:
                 total_attempts += 1
                 if total_attempts > 75:
-                    print(f'Failed! {self.m=}')
+                    print(f"Failed! {self.m=}")
                     return np.nan
                 if finished:
                     try:
@@ -170,7 +172,7 @@ class ALOBKSWithMultiplicativeErrorBounds(ALOBase):
         jac: LinearOperator,
         m: int,
         generator: torch.Generator = None,
-        delta = 1e-9,
+        delta=1e-9,
     ):
         super().__init__(loss_fun, y, y_hat)
         self._jac = jac
@@ -181,7 +183,7 @@ class ALOBKSWithMultiplicativeErrorBounds(ALOBase):
 
         self._best_diag_jac = None
         self.do_more_diag_jac_estims(m)
-        self._delta  = delta
+        self._delta = delta
 
     def _get_matvecs(self, m: int) -> [Tensor, Tensor]:
         Omega = torch.randint(0, 2, (self.n, m), generator=self._generator) * 2.0 - 1
@@ -233,9 +235,18 @@ class ALOBKSWithMultiplicativeErrorBounds(ALOBase):
                     :, np.random.choice(self.m, m, replace=False)
                 ]
                 diag_jac_mean = subset_sketched.mean(dim=1)
-                diag_jac_std = subset_sketched.std(dim=1)
-                t_over_sqrtm = np.sqrt(2 * np.log(1 / self._delta) / m)
-                diag_jac = diag_jac_mean - t_over_sqrtm * diag_jac_std
+                diag_jac_stderr = subset_sketched.std(dim=1) / np.sqrt(m)
+
+                # estimate via truncated normal
+                a = -diag_jac_mean / diag_jac_stderr
+                b = (1 - diag_jac_mean) / diag_jac_stderr
+                Z = stats.norm.cdf(b) - stats.norm.cdf(a)
+                diag_jac = (
+                    diag_jac_mean
+                    + diag_jac_stderr * (stats.norm.pdf(a) - stats.norm.pdf(b)) / Z
+                )
+                # in case of division by zero, return mean
+                diag_jac[np.isnan(diag_jac)] = diag_jac_mean[np.isnan(diag_jac)]
                 if (self._d2loss_dboth + self._d2loss_dy_hat2 * diag_jac >= 0).any():
                     ...
 
