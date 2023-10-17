@@ -43,11 +43,13 @@ class ALOBase(object):
         self._d2loss_dy_hat2 = self._d2loss_dy_hat2.detach()
 
     def y_tilde(self, diag_jac: Tensor, epsilon=1e-8) -> Tensor:
+        """
         diag_jac = (
             torch.clamp(diag_jac, epsilon, 1 - epsilon)
             if epsilon is not None
             else diag_jac
         )
+        """
         return self._y_hat - self._dloss_dy_hat * diag_jac / (
             self._d2loss_dboth + self._d2loss_dy_hat2 * diag_jac
         )
@@ -153,6 +155,91 @@ class ALOBKS(ALOBase):
 
                 ys[idx] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
                 finished = True
+
+            coefs, residual_norm = utils.robust_poly_fit(xs, ys, order)
+
+            return coefs[0]
+
+
+class ALOBKSWithMultiplicativeErrorBounds(ALOBase):
+    def __init__(
+        self,
+        loss_fun: Callable[[Tensor, Tensor], Tensor],
+        y: Tensor,
+        y_hat: Tensor,
+        jac: LinearOperator,
+        m: int,
+        generator: torch.Generator = None,
+        delta = 1e-9,
+    ):
+        super().__init__(loss_fun, y, y_hat)
+        self._jac = jac
+
+        self._diag_jac_estims = None
+        self.m = 0
+        self._generator = generator
+
+        self._best_diag_jac = None
+        self.do_more_diag_jac_estims(m)
+        self._delta  = delta
+
+    def _get_matvecs(self, m: int) -> [Tensor, Tensor]:
+        Omega = torch.randint(0, 2, (self.n, m), generator=self._generator) * 2.0 - 1
+        return self._jac @ Omega, Omega
+
+    def do_more_diag_jac_estims(self, m: int) -> None:
+        matvecs, Omega = self._get_matvecs(m)
+
+        diag_jac_estims = matvecs * Omega
+        if self._diag_jac_estims is None:
+            self._diag_jac_estims = diag_jac_estims
+        else:
+            self._diag_jac_estims = torch.cat(
+                (self._diag_jac_estims, diag_jac_estims), dim=1
+            )
+        self.m += m
+
+        self._best_diag_jac = self._diag_jac_estims.mean(dim=1)
+
+    def joint_vars(self) -> [Tensor, Tensor]:
+        return self._y, self.y_tilde(self._best_diag_jac)
+
+    def eval_risk(
+        self,
+        risk: Callable[[Tensor, Tensor], Tensor],
+        order: Optional[int] = 1,
+        power: float = 1.0,
+    ) -> float:
+        if order is None:
+            return risk(self._y, self.y_tilde(self._best_diag_jac)).sum().item()
+        else:
+            assert self.m > 1
+            m0 = self.m // 2
+
+            xs = np.zeros(50)
+            ys = np.zeros(50)
+
+            it = iter(enumerate(np.linspace(1, self.m - m0 - 1, 50).astype(int)))
+            total_attempts = 0
+            while True:
+                try:
+                    idx, i = next(it)
+                except StopIteration:
+                    break
+                m = m0 + i
+                xs[idx] = 1 / m**power
+                # diag_jac = (diag_jac * (m - 1) + self._diag_jac_estims[:, m - 1]) / m
+                subset_sketched = self._diag_jac_estims[
+                    :, np.random.choice(self.m, m, replace=False)
+                ]
+                diag_jac_mean = subset_sketched.mean(dim=1)
+                diag_jac_std = subset_sketched.std(dim=1)
+                t_over_sqrtm = np.sqrt(2 * np.log(1 / self._delta) / m)
+                diag_jac = diag_jac_mean - t_over_sqrtm * diag_jac_std
+                if (self._d2loss_dboth + self._d2loss_dy_hat2 * diag_jac >= 0).any():
+                    ...
+
+                ys[idx] = risk(self._y, self.y_tilde(diag_jac)).sum().item()
 
             coefs, residual_norm = utils.robust_poly_fit(xs, ys, order)
 

@@ -6,5 +6,6 @@ def robust_poly_fit(x, y, order: int):
     r = y - np.vander(x, order + 1, True) @ beta
 
     prob = cp.Problem(cp.Minimize(cp.sum(cp.huber(r))))
-    prob.solve(cp.CLARABEL)
+    if not (prob.solve(cp.CLARABEL) < np.inf):
+        return [np.nan for _ in range(order + 1)], np.inf
     return beta.value, np.linalg.norm(r.value)

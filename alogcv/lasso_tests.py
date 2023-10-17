@@ -10,7 +10,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 
-from alo import ALOExact, ALOBKS #, ALOBKSWithVarEstimation
+from alo import ALOExact, ALOBKS, ALOBKSWithMultiplicativeErrorBounds
 
 n = 2000
 p = 1800
@@ -77,7 +77,8 @@ for i, lamda in enumerate(tqdm(lamdas)):
     for j, m in enumerate(ms):
         for trial in range(n_trials):
             print(lamda)
-            alo_bks = ALOBKS(loss_fun, y, y_hat, H, m)
+            #alo_bks = ALOBKS(loss_fun, y, y_hat, H, m)
+            alo_bks = ALOBKSWithMultiplicativeErrorBounds(loss_fun, y, y_hat, H, m)
             risks_bks[i, j, trial] = alo_bks.eval_risk(risk, order=None) / n
             risks_poly[i, j, trial] = alo_bks.eval_risk(risk, order=1) / n
     # print(alo_bks.eval_risk(risk, order=None))
