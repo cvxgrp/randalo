@@ -2,8 +2,6 @@ from abc import ABC, abstractmethod
 from typing import Callable, Optional
 
 import numpy as np
-from numpy.polynomial.polynomial import Polynomial
-from scipy import stats
 
 import torch
 from torch import autograd, Tensor
