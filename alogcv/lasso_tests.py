@@ -1,16 +1,17 @@
 import torch
 from torch import autograd, Tensor
+
 torch.set_default_dtype(torch.float64)
 
 from sklearn.linear_model import Lasso
 
-import numpy as np 
+import numpy as np
 
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 
-from alo import ALOExact, ALOBKS, ALOBKSWithMultiplicativeErrorBounds
+from alo import ALOExact, ALORandomized, ALOBKSWithMultiplicativeErrorBounds
 
 n = 2000
 p = 1800
@@ -21,26 +22,31 @@ n_trials = 2
 device = "cpu"
 
 beta = torch.randn(p, device=device) / np.sqrt(p // 3)
-beta[p // 3:] = 0
+beta[p // 3 :] = 0
+
 
 def generate_sample():
     nu = 5
     _X = torch.distributions.studentT.StudentT(nu).sample((n, p))
-    #_X =  (torch.distributions.exponential.Exponential(1.0).sample((n,)) + 0.05)[:, None] * \
+    # _X =  (torch.distributions.exponential.Exponential(1.0).sample((n,)) + 0.05)[:, None] * \
     #       torch.distributions.normal.Normal(0, 1).sample((n, p))
-    #_X = torch.distributions.normal.Normal(0, 1).sample((n, p))
+    # _X = torch.distributions.normal.Normal(0, 1).sample((n, p))
     _mu = _X @ beta
-    #y = _mu + torch.distributions.laplace.Laplace(0, 1).rsample((n,))
+    # y = _mu + torch.distributions.laplace.Laplace(0, 1).rsample((n,))
     _y = _mu + torch.distributions.normal.Normal(0, 1).rsample((n,))
     return _X, _mu, _y
 
+
 X, mu, y = generate_sample()
+
 
 def loss_fun(y, y_hat):
     return (y - y_hat) ** 2 / 2
 
+
 def risk(y, y_hat):
     return (y - y_hat) ** 2
+
 
 risks_gen = np.zeros(len(lamdas))
 risks_alo = np.zeros(len(lamdas))
@@ -48,8 +54,8 @@ risks_loo_shortcut = np.zeros(len(lamdas))
 risks_bks = np.zeros((len(lamdas), len(ms), n_trials))
 risks_poly = np.zeros((len(lamdas), len(ms), n_trials))
 
-#var_bks = np.zeros((len(lamdas), len(ms), n_trials))
-#oneminushoverstdbks = np.zeros((len(lamdas), len(ms), n_trials))
+# var_bks = np.zeros((len(lamdas), len(ms), n_trials))
+# oneminushoverstdbks = np.zeros((len(lamdas), len(ms), n_trials))
 
 for i, lamda in enumerate(tqdm(lamdas)):
     lasso = Lasso(lamda)
@@ -69,7 +75,6 @@ for i, lamda in enumerate(tqdm(lamdas)):
     risks_gen[i] = risk(beta, beta_hat).sum().item() + sigma**2
 
     alo_exact = ALOExact(loss_fun, y, y_hat, h)
- 
 
     risks_alo[i] = alo_exact.eval_risk(risk) / n
     risks_loo_shortcut[i] = torch.sum((y - y_hat) ** 2 / (1 - h) ** 2).item() / n
@@ -77,8 +82,9 @@ for i, lamda in enumerate(tqdm(lamdas)):
     for j, m in enumerate(ms):
         for trial in range(n_trials):
             print(lamda)
-            #alo_bks = ALOBKS(loss_fun, y, y_hat, H, m)
-            alo_bks = ALOBKSWithMultiplicativeErrorBounds(loss_fun, y, y_hat, H, m)
+            # alo_bks = ALOBKS(loss_fun, y, y_hat, H, m)
+            alo_bks = ALORandomized(loss_fun, y, y_hat, H, m)
+            # alo_bks = ALOBKSWithMultiplicativeErrorBounds(loss_fun, y, y_hat, H, m)
             risks_bks[i, j, trial] = alo_bks.eval_risk(risk, order=None) / n
             risks_poly[i, j, trial] = alo_bks.eval_risk(risk, order=1) / n
     # print(alo_bks.eval_risk(risk, order=None))
@@ -118,4 +124,3 @@ plt.xlabel("$\lambda$")
 plt.ylabel("Risk")
 
 plt.show()
-
