@@ -286,7 +286,9 @@ class ALORandomized(ALOBase):
 
     def joint_vars(self) -> [Tensor, Tensor]:
         """Return the true response and corrected predictions."""
-        return self._y, self.y_tilde(self._best_transformed_diag_jac)
+        return self._y, self.y_tilde_from_transformed_jac(
+            self._best_transformed_diag_jac
+        )
 
     def eval_risk(
         self,
@@ -317,14 +319,7 @@ class ALORandomized(ALOBase):
 
         # if order is not provided, return the risk estimate for the best diagonal Jacobian
         if order is None:
-            return (
-                risk(
-                    self._y,
-                    self.y_tilde_from_transformed_jac(self._best_transformed_diag_jac),
-                )
-                .sum()
-                .item()
-            )
+            return risk(*self.joint_vars()).sum().item()
 
         # otherwise, estimate the risk through polynomial fitting
         if self.m <= 1:
