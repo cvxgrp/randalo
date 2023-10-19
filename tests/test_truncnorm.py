@@ -11,10 +11,10 @@ class TestTruncNormMean(unittest.TestCase):
 
     def test_truncnorm_mean(self):
         # Sample data
-        mu = torch.tensor([0.0, 1.0, 2.0])
-        sigma = torch.tensor([1.0, 0.5, 1.5])
-        a = torch.tensor([-1.0, 0.5, 1.0])
-        b = torch.tensor([1.0, 2.0, 3.0])
+        mu = torch.tensor([0.0, 1.0, 2.0, 3.0])
+        sigma = torch.tensor([1.0, 0.5, 1.5, 0.0])
+        a = torch.tensor([-1.0, 0.5, 1.0, 2.0])
+        b = torch.tensor([1.0, 2.0, 3.0, 4.0])
 
         # Calculate mean using the torch implementation
         result = truncnorm.truncnorm_mean(mu, sigma, a, b)
@@ -32,6 +32,8 @@ class TestTruncNormMean(unittest.TestCase):
             ],
             dtype=torch.float32,
         )
+        # last element is nan
+        expected[-1] = mu[-1]
 
         # Check if the results are approximately equal within a small tolerance
         self.assertTrue(torch.allclose(result, expected, atol=1e-5))
