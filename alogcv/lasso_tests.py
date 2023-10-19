@@ -11,7 +11,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 
-from alo import ALOExact, ALORandomized
+from alogcv.alo import ALOExact, ALORandomized
 
 n = 2000
 p = 1800

@@ -9,7 +9,8 @@ from torch import autograd, Tensor
 import linops as lo
 from linops import LinearOperator
 
-import utils
+from . import utils
+from .truncnorm import truncnorm_mean
 
 
 class ALOBase(ABC):
@@ -37,6 +38,8 @@ class ALOBase(ABC):
         self._y = y.detach().clone().requires_grad_(True)
         self._y_hat = y_hat.detach().clone().requires_grad_(True)
         self.n = self._y.shape[0]
+
+        self._device = self._y.device
 
         # compute first and second derivatives of loss function
         # we obtain the vector derivatives by summing and then taking the gradient
@@ -202,7 +205,7 @@ class ALORandomized(ALOBase):
         y_hat: Tensor,
         jac: LinearOperator,
         m: int,
-        generator: torch.Generator = None,
+        generator: Optional[torch.Generator] = None,
     ):
         """Initialize a randomized ALO estimator.
 
@@ -218,7 +221,7 @@ class ALORandomized(ALOBase):
             The Jacobian.
         m : int
             The number of samples to initialize with.
-        generator : torch.Generator, optional
+        generator : Optional[torch.Generator]
             The random number generator.
         """
         super().__init__(loss_fun, y, y_hat)
@@ -226,6 +229,9 @@ class ALORandomized(ALOBase):
 
         self._transformed_diag_jac_estims = None
         self.m = 0
+
+        if generator is None:
+            generator = torch.Generator(device=self._device)
         self._generator = generator
 
         self._best_transformed_diag_jac = None
@@ -277,11 +283,11 @@ class ALORandomized(ALOBase):
         # compute the sufficient statistics and construct the truncated normal estimate
         self._transformed_diag_jac_mean = self._transformed_diag_jac_estims.mean(dim=1)
         self._transformed_diag_jac_std = self._transformed_diag_jac_estims.std(dim=1)
-        self._best_transformed_diag_jac = utils.truncated_normal_mean(
+        self._best_transformed_diag_jac = truncnorm_mean(
             self._transformed_diag_jac_mean,
             self._transformed_diag_jac_std / np.sqrt(m),
-            0,
-            1,
+            torch.tensor([0], device=self._device),
+            torch.tensor([1], device=self._device),
         )
 
     def joint_vars(self) -> [Tensor, Tensor]:
@@ -334,13 +340,19 @@ class ALORandomized(ALOBase):
         for i, m in enumerate(ms):
             # estimate the diagonal Jacobian with m samples
             subset_sketched = self._transformed_diag_jac_estims[
-                :, np.random.choice(self.m, m, replace=False)
+                :,
+                torch.randperm(self.m, generator=self._generator)[:m],
             ]
             diag_jac_mean = subset_sketched.mean(dim=1)
             diag_jac_std = self._transformed_diag_jac_std / np.sqrt(m)
 
             # estimate via truncated normal
-            diag_jac = utils.truncated_normal_mean(diag_jac_mean, diag_jac_std, 0, 1)
+            diag_jac = truncnorm_mean(
+                diag_jac_mean,
+                diag_jac_std,
+                torch.tensor([0], device=self._device),
+                torch.tensor([1], device=self._device),
+            )
 
             # compute the risk estimate
             ys[i] = (
