@@ -334,7 +334,7 @@ class ALORandomized(ALOBase):
 
         # initialize the arrays for the polynomial fitting
         ms = np.linspace(m0, self.m, n_points).astype(int)
-        ys = np.zeros(n_points)
+        risks = np.zeros(n_points)
 
         # iterate over the number of samples
         for i, m in enumerate(ms):
@@ -355,10 +355,14 @@ class ALORandomized(ALOBase):
             )
 
             # compute the risk estimate
-            ys[i] = (
+            risks[i] = (
                 risk(self._y, self.y_tilde_from_transformed_jac(diag_jac)).sum().item()
             )
 
         # return the constant term of the polynomial fit
-        coefs, _ = utils.robust_poly_fit(1 / ms**power, ys, order)
+        self._ms = ms
+        self._risks = risks
+        coefs, self._res_m_to_risk_fit = utils.robust_poly_fit(
+            1 / ms**power, risks, order
+        )
         return coefs[0]

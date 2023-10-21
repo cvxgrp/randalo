@@ -1,3 +1,8 @@
+import torch
+import numpy as np
+
+from alogcv.alo import ALOExact, ALORandomized
+
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 
@@ -13,11 +18,14 @@ X = torch.randn(n, p, device=device)
 beta = torch.randn(p, device=device) / np.sqrt(p)
 y = X @ beta + torch.randn(n, device=device) * sigma
 
+
 def loss_fun(y, y_hat):
     return (y - y_hat) ** 2 / 2
 
+
 def risk(y, y_hat):
     return (y - y_hat) ** 2
+
 
 risks_gen = np.zeros(len(lamdas))
 risks_alo = np.zeros(len(lamdas))
@@ -29,9 +37,7 @@ for i, lamda in enumerate(tqdm(lamdas)):
     beta_hat = torch.linalg.solve(
         X.T @ X + n * lamda * torch.eye(p, device=device), X.T @ y
     )
-    H = X @ torch.linalg.solve(
-        X.T @ X + n * lamda * torch.eye(p, device=device), X.T
-    )
+    H = X @ torch.linalg.solve(X.T @ X + n * lamda * torch.eye(p, device=device), X.T)
     h = torch.diag(H)
 
     y_hat = X @ beta_hat
@@ -44,7 +50,7 @@ for i, lamda in enumerate(tqdm(lamdas)):
 
     for j, m in enumerate(ms):
         for trial in range(n_trials):
-            alo_bks = ALOBKS(loss_fun, y, y_hat, H, m)
+            alo_bks = ALORandomized(loss_fun, y, y_hat, H, m)
             risks_bks[i, j, trial] = alo_bks.eval_risk(risk, order=None) / n
             risks_poly[i, j, trial] = alo_bks.eval_risk(risk, order=1) / n
     # print(alo_bks.eval_risk(risk, order=None))

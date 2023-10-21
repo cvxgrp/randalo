@@ -1,16 +1,18 @@
 import torch
-#torch.autograd.set_detect_anomaly(True)
+
+# torch.autograd.set_detect_anomaly(True)
 from typing import Literal
 from surecr.solver import Solver
 import surecr.divergence as div_lib
 import time
 
+
 class GCV:
-    def __init__(self,
-                 solver: Solver):
+    def __init__(self, solver: Solver):
         self._solver = solver
-        self._divergence_strategy: \
-                Literal['default', 'exact', 'xtrace', 'hutchinson', 'hutch++'] = 'default'
+        self._divergence_strategy: Literal[
+            "default", "exact", "xtrace", "hutchinson", "hutch++"
+        ] = "default"
         self._solution = None
 
     @property
@@ -25,11 +27,10 @@ class GCV:
         Returns how long it took for the solver to run and how long it took
         the divergence estimator to run during the last compute call.
         """
-        return {'solver':
-                    self._t_f_solver - self._t_i_solver,
-                'divergence':
-                    self._t_f_div - self._t_i_div,
-                }
+        return {
+            "solver": self._t_f_solver - self._t_i_solver,
+            "divergence": self._t_f_div - self._t_i_div,
+        }
 
     def compute(self, data: torch.Tensor, divergence_parameters={}) -> torch.Tensor:
         """
@@ -61,12 +62,14 @@ class GCV:
         self._t_f_solver = time.monotonic()
 
         self._t_i_div = time.monotonic()
-        divergence = div_lib.divergence(mu_hat_evaled,
-                                        shape_ereased_data,
-                                        self._divergence_strategy,
-                                        divergence_parameters)
+        divergence = div_lib.divergence(
+            mu_hat_evaled,
+            shape_ereased_data,
+            self._divergence_strategy,
+            divergence_parameters,
+        )
         self._t_f_div = time.monotonic()
         self._divergence = divergence
         r = shape_ereased_data.detach() - mu_hat_evaled.deatch()
 
-        return ((r / (1  - divergence / data.numel()))**2).sum()
+        return ((r / (1 - divergence / data.numel())) ** 2).sum()
