@@ -1,12 +1,21 @@
+import numpy as np
+import torch
+from sklearn.linear_model import Lasso
+from torch import autograd, Tensor
+from tqdm import tqdm
+
 from alogcv.alo import ALOExact, ALORandomized
 
-shapes = [(2000, 1000), (2000, 1800), (1000, 2000)]
+shapes = [(2000, 1800), (1000, 2000)]
+#shapes = [(2000, 1000), (2000, 1800), (1000, 2000)]
 lasso_lamdas = np.logspace(-2.5, 0, 30)
 ridge_lamdas = np.logspace(-3, 1, 30)
 n_trials = 10
 ms = range(30, 200, 30)
 sigma = 1
 device = "cpu"
+
+torch.manual_seed(0xEE_364_AB)
 
 
 def loss_fun(y, y_hat):
@@ -44,12 +53,23 @@ for n, p in shapes:
         H = Q @ Q.T
         h = torch.diag(H)
         y_hat = X @ beta_hat
-        exacts[((n, p), "lasso", lamda)] = ALOExact(loss_fun, y, y_hat, h)
+        exacts[((n, p), "lasso", lamda)] = (exact := ALOExact(loss_fun, y, y_hat, h))
+        np.savez(f'data/n{n}-p{p}-lasso-lamda{lamda}-exacts.npz',
+            exact=np.array(exact.eval_risk(risk)),
+        )
+
 
         for m in ms:
             randoms = [ALORandomized(loss_fun, y, y_hat, H, m) for _ in range(n_trials)]
-            [r.eval_risk(risk) for r in randoms]
+            values = np.array([r.eval_risk(risk) for r in randoms])
+            np.savez(f'data/n{n}-p{p}-lasso-lamda{lamda}-m{m}.npz',
+                     values=values,
+                     ms=np.vstack([r._ms for r in randoms]),
+                     risks=np.vstack([r._risks for r in randoms]),
+                     res_m_to_risk_fit=np.vstack([r._res_m_to_risk_fit for r in randoms]),
+            )
         data[((n, p), "lasso", lamda, m)] = randoms
+
 
     X = torch.randn(n, p, device=device)
     beta = torch.randn(p, device=device) / np.sqrt(p)
@@ -65,8 +85,20 @@ for n, p in shapes:
         h = torch.diag(H)
         y_hat = X @ beta_hat
 
-        exacts[((n, p), "ridge", lamda)] = ALOExact(loss_fun, y, y_hat, h)
+        exacts[((n, p), "ridge", lamda)] = (exact := ALOExact(loss_fun, y, y_hat, h))
+        np.savez(f'data/n{n}-p{p}-ridge-lamda{lamda}-exacts.npz',
+            exact=np.array(exact.eval_risk(risk)),
+        )
+
         for m in ms:
             randoms = [ALORandomized(loss_fun, y, y_hat, H, m) for _ in range(n_trials)]
-            [r.eval_risk(risk) for r in randoms]
+            values = np.array([r.eval_risk(risk) for r in randoms])
+            np.savez(f'data/n{n}-p{p}-ridge-lamda{lamda}-m{m}.npz',
+                     values=values,
+                     ms=np.vstack([r._ms for r in randoms]),
+                     risks=np.vstack([r._risks for r in randoms]),
+                     res_m_to_risk_fit=np.vstack([r._res_m_to_risk_fit for r in randoms]),
+            )
+
         data[((n, p), "ridge", lamda, m)] = randoms
+

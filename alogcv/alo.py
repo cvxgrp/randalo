@@ -232,6 +232,7 @@ class ALORandomized(ALOBase):
 
         if generator is None:
             generator = torch.Generator(device=self._device)
+            generator.seed()
         self._generator = generator
 
         self._best_transformed_diag_jac = None
