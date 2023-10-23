@@ -1,4 +1,6 @@
 from pathlib import Path
+import alogcv
+import alogcv.utils
 
 import re
 import collections
@@ -14,6 +16,7 @@ pattern = re.compile(
 class ALORun:
     def __init__(self, shape, problem, lamda, m, file):
         self.exact = m is None
+        self.m = m
         self.shape = shape
         self.problem = problem
         self.lamda = lamda
@@ -55,17 +58,99 @@ data = fetch_data(
     ["lamda", "m"],
 )
 
-for (lamda, m), [obj] in data.items():
-    plt.errorbar(
-        1 / obj.data["ms"].mean(axis=0),
-        obj.data["risks"].mean(axis=0),
-        yerr=obj.data["risks"].std(axis=0),
-        label=f"{m=},{lamda=}",
-    )
+color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+for i, (
+    (lamda, m),
+    [obj],
+) in enumerate(data.items()):
+    xs = 1 / obj.data["ms"][0]
+    ys = obj.data["risks"][0]
+    params, _ = alogcv.utils.robust_poly_fit(xs, ys, 1)
+    hat_ys = np.vander(xs, 2, True) @ params
+
+    plt.plot(xs, ys, label=f"{m=} data", color=color_cycle[i])
+
+    plt.plot(xs, hat_ys, label=f"{m=} fit", color=color_cycle[i], linestyle="dashed")
+
+    for j in range(1, 10):
+        break
+        plt.plot(
+            1 / obj.data["ms"][j],
+            obj.data["risks"][j],
+            # color=color_cycle[i]
+        )
+
 
 plt.title("n=1000, p=2000, LASSO")
 plt.legend()
 plt.xlabel("1/m")
 plt.ylabel("risk with m samples")
+
+plt.show()
+
+data = fetch_data(
+    lambda n, p, problem, lamda, exacts, m: n == 1000
+    and p == 2000
+    and problem == "lasso"
+    and lamda > 0.1
+    and lamda < 0.12,
+    [
+        "shape",
+        "problem",
+        "lamda",
+    ],
+)
+
+
+color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+i = 0
+for ((n, p), problem, lamda), [*alos] in data.items():
+    for alo in alos:
+        if alo.exact:
+            exact = alo
+
+    sorted_alos = list(sorted([(alo.m, alo) for alo in alos if alo is not exact]))
+    ms = np.array([m for m, _ in sorted_alos])
+    ys = np.array([alo.data["values"] - exact.data["exact"] for _, alo in sorted_alos])
+    rs = np.array(
+        [
+            np.linalg.norm(alo.data["res_m_to_risk_fit"], axis=0)
+            for _, alo in sorted_alos
+        ]
+    )
+    std_rs = np.array(
+        [
+            np.linalg.norm(alo.data["res_m_to_risk_fit"], axis=0)
+            for _, alo in sorted_alos
+        ]
+    )
+    std_ys = np.array([alo.data["values"] for _, alo in sorted_alos])
+
+    for i in range(0, 10):
+        # plt.errorbar(
+        plt.plot(
+            ms,
+            ys[:, i],
+            # yerr=std_ys,
+            label=f"Error {i}",
+            color=color_cycle[i],
+        )
+
+        # plt.errorbar(
+        plt.plot(
+            ms,
+            rs[:, i],
+            # yerr=std_rs,
+            label=f"fit magnitude {i}",
+            linestyle="dashed",
+            color=color_cycle[i],
+        )
+
+
+plt.title(f"n=1000, p=2000, LASSO")
+plt.legend()
+plt.xlabel("m")
+plt.ylabel("BKSRisk - ExactRisk")
 
 plt.show()
