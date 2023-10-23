@@ -3,7 +3,7 @@ import subprocess
 from setuptools import setup, find_packages
 
 with open("README.md", "r") as fh:
-   long_description = fh.read()
+    long_description = fh.read()
 
 # get all the git tags from the cmd line that follow our versioning pattern
 git_tags = subprocess.Popen(

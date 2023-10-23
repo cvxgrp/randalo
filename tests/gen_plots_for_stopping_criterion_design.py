@@ -58,6 +58,17 @@ data = fetch_data(
     ["lamda", "m"],
 )
 
+exact_data = fetch_data(
+    lambda n, p, problem, lamda, exacts, m: n == 1000
+    and p == 2000
+    and problem == "lasso"
+    and exacts
+    and lamda > 0.1
+    and lamda < 0.12,
+    ["lamda", "m"],
+)
+true_alo = next(iter(exact_data.values()))[0].data["exact"]
+
 color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
 for i, (
@@ -67,11 +78,18 @@ for i, (
     xs = 1 / obj.data["ms"][0]
     ys = obj.data["risks"][0]
     params, _ = alogcv.utils.robust_poly_fit(xs, ys, 1)
-    hat_ys = np.vander(xs, 2, True) @ params
+    extended_xs = np.linspace(0, 1 / 15)
+    hat_ys = np.vander(extended_xs, 2, True) @ params
 
-    plt.plot(xs, ys, label=f"{m=} data", color=color_cycle[i])
+    plt.plot(xs, ys / true_alo, label=f"{m=} data", color=color_cycle[i])
 
-    plt.plot(xs, hat_ys, label=f"{m=} fit", color=color_cycle[i], linestyle="dashed")
+    plt.plot(
+        extended_xs,
+        hat_ys / true_alo,
+        label=f"{m=} fit",
+        color=color_cycle[i],
+        linestyle="dashed",
+    )
 
     for j in range(1, 10):
         break
@@ -90,11 +108,13 @@ plt.ylabel("risk with m samples")
 plt.show()
 
 data = fetch_data(
-    lambda n, p, problem, lamda, exacts, m: n == 1000
-    and p == 2000
-    and problem == "lasso"
-    and lamda > 0.1
-    and lamda < 0.12,
+    lambda *_: True
+    # lambda n, p, problem, lamda, exacts, m: n == 1000
+    # and p == 2000
+    # and problem == "lasso"
+    # and lamda > 0.1
+    # and lamda < 0.12
+    ,
     [
         "shape",
         "problem",
@@ -120,7 +140,7 @@ for ((n, p), problem, lamda), [*alos] in data.items():
     )
     rs = np.array(
         [
-            np.linalg.norm(alo.data["res_m_to_risk_fit"], axis=1)
+            np.linalg.norm(alo.data["res_m_to_risk_fit"], axis=1) / alo.data["values"]
             for _, alo in sorted_alos
         ]
     )
@@ -136,10 +156,13 @@ for ((n, p), problem, lamda), [*alos] in data.items():
         plt.scatter(
             rs[j, :],
             ys[j, :],
-            label=f"{m=}",
+            label=f"{m=}, {lamda=}",
         )
 
-plt.title(f"n=1000, p=2000, LASSO, {lamda=}")
+    del exact
+
+# plt.title(f"n=1000, p=2000, LASSO")
+plt.title(f"All data")
 plt.legend()
 plt.xlabel("Residual Magnitude")
 plt.ylabel("Relate Error(BKSRisk, ExactRisk)")
