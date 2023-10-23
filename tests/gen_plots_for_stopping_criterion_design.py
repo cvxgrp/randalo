@@ -112,45 +112,36 @@ for ((n, p), problem, lamda), [*alos] in data.items():
 
     sorted_alos = list(sorted([(alo.m, alo) for alo in alos if alo is not exact]))
     ms = np.array([m for m, _ in sorted_alos])
-    ys = np.array([alo.data["values"] - exact.data["exact"] for _, alo in sorted_alos])
+    ys = np.array(
+        [
+            (alo.data["values"] - exact.data["exact"]) / exact.data["exact"]
+            for _, alo in sorted_alos
+        ]
+    )
     rs = np.array(
         [
-            np.linalg.norm(alo.data["res_m_to_risk_fit"], axis=0)
+            np.linalg.norm(alo.data["res_m_to_risk_fit"], axis=1)
             for _, alo in sorted_alos
         ]
     )
     std_rs = np.array(
         [
-            np.linalg.norm(alo.data["res_m_to_risk_fit"], axis=0)
+            np.linalg.norm(alo.data["res_m_to_risk_fit"], axis=1)
             for _, alo in sorted_alos
         ]
     )
     std_ys = np.array([alo.data["values"] for _, alo in sorted_alos])
 
-    for i in range(0, 10):
-        # plt.errorbar(
-        plt.plot(
-            ms,
-            ys[:, i],
-            # yerr=std_ys,
-            label=f"Error {i}",
-            color=color_cycle[i],
+    for j, m in enumerate(ms):
+        plt.scatter(
+            rs[j, :],
+            ys[j, :],
+            label=f"{m=}",
         )
 
-        # plt.errorbar(
-        plt.plot(
-            ms,
-            rs[:, i],
-            # yerr=std_rs,
-            label=f"fit magnitude {i}",
-            linestyle="dashed",
-            color=color_cycle[i],
-        )
-
-
-plt.title(f"n=1000, p=2000, LASSO")
+plt.title(f"n=1000, p=2000, LASSO, {lamda=}")
 plt.legend()
-plt.xlabel("m")
-plt.ylabel("BKSRisk - ExactRisk")
+plt.xlabel("Residual Magnitude")
+plt.ylabel("Relate Error(BKSRisk, ExactRisk)")
 
 plt.show()
