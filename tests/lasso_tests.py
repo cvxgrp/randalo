@@ -12,12 +12,13 @@ from matplotlib import pyplot as plt
 
 
 from alogcv.alo import ALOExact, ALORandomized
+import alogcv.utils
 
 n = 2000
 p = 1800
 sigma = 1
 lamdas = np.logspace(-2.5, 0, 30)
-ms = [30, 50, 100]
+ms = [30, 50]
 n_trials = 2
 device = "cpu"
 
@@ -27,9 +28,10 @@ beta[p // 3 :] = 0
 
 def generate_sample():
     nu = 5
-    _X = torch.distributions.studentT.StudentT(nu).sample((n, p))
-    # _X =  (torch.distributions.exponential.Exponential(1.0).sample((n,)) + 0.05)[:, None] * \
-    #       torch.distributions.normal.Normal(0, 1).sample((n, p))
+    # _X = torch.distributions.studentT.StudentT(nu).sample((n, p))
+    _X = (torch.distributions.exponential.Exponential(1.0).sample((n,)) + 0.05)[
+        :, None
+    ] * torch.distributions.normal.Normal(0, 1).sample((n, p))
     # _X = torch.distributions.normal.Normal(0, 1).sample((n, p))
     _mu = _X @ beta
     # y = _mu + torch.distributions.laplace.Laplace(0, 1).rsample((n,))
@@ -62,8 +64,12 @@ for i, lamda in enumerate(tqdm(lamdas)):
     lasso.fit(X, y)
     beta_hat = Tensor(lasso.coef_)
 
+    beta_est, Hest, tdur, iters = alogcv.utils.lasso(X, y, lamda)
+    print(f"{iters=} in {tdur=}s")
+    print(f"{torch.linalg.norm(beta_hat - beta_est)/torch.linalg.norm(beta_hat)=}")
+
     mask = torch.abs(beta_hat) > 1e-8
-    print(mask.sum().item())
+    print("non-zero elements: ", mask.sum().item())
 
     X_lasso = X[:, mask]
     Q, _ = torch.linalg.qr(X_lasso)
@@ -81,9 +87,9 @@ for i, lamda in enumerate(tqdm(lamdas)):
 
     for j, m in enumerate(ms):
         for trial in range(n_trials):
-            print(lamda)
             # alo_bks = ALOBKS(loss_fun, y, y_hat, H, m)
-            alo_bks = ALORandomized(loss_fun, y, y_hat, H, m)
+            alo_bks = ALORandomized(loss_fun, y, y_hat, Hest, m)
+
             # alo_bks = ALOBKSWithMultiplicativeErrorBounds(loss_fun, y, y_hat, H, m)
             risks_bks[i, j, trial] = alo_bks.eval_risk(risk, order=None) / n
             risks_poly[i, j, trial] = alo_bks.eval_risk(risk, order=1) / n
