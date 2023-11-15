@@ -14,6 +14,8 @@ from matplotlib import pyplot as plt
 from alogcv.alo import ALOExact, ALORandomized
 import alogcv.utils
 
+torch.manual_seed(0x364cd)
+
 n = 2000
 p = 1800
 sigma = 1

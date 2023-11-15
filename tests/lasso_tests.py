@@ -14,6 +14,8 @@ from matplotlib import pyplot as plt
 from alogcv.alo import ALOExact, ALORandomized
 import alogcv.utils
 
+torch.manual_seed(0x364ef)
+
 n = 2000
 p = 1800
 sigma = 1
@@ -29,10 +31,10 @@ beta[p // 3 :] = 0
 def generate_sample():
     nu = 5
     # _X = torch.distributions.studentT.StudentT(nu).sample((n, p))
-    _X = (torch.distributions.exponential.Exponential(1.0).sample((n,)) + 0.05)[
-        :, None
-    ] * torch.distributions.normal.Normal(0, 1).sample((n, p))
-    # _X = torch.distributions.normal.Normal(0, 1).sample((n, p))
+    #_X = (torch.distributions.exponential.Exponential(1.0).sample((n,)) + 0.05)[
+    #    :, None
+    #] * torch.distributions.normal.Normal(0, 1).sample((n, p))
+    _X = torch.distributions.normal.Normal(0, 1).sample((n, p))
     _mu = _X @ beta
     # y = _mu + torch.distributions.laplace.Laplace(0, 1).rsample((n,))
     _y = _mu + torch.distributions.normal.Normal(0, 1).rsample((n,))
@@ -89,6 +91,7 @@ for i, lamda in enumerate(tqdm(lamdas)):
         for trial in range(n_trials):
             # alo_bks = ALOBKS(loss_fun, y, y_hat, H, m)
             alo_bks = ALORandomized(loss_fun, y, y_hat, Hest, m)
+            # alo_bks = ALORandomized(loss_fun, y, y_hat, H, m)
 
             # alo_bks = ALOBKSWithMultiplicativeErrorBounds(loss_fun, y, y_hat, H, m)
             risks_bks[i, j, trial] = alo_bks.eval_risk(risk, order=None) / n
