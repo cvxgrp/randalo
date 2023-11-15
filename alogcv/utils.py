@@ -40,3 +40,27 @@ def lasso(X, y, lamda):
     H = lo.VectorJacobianOperator(y_hat, y)
 
     return beta, H, tf - t0, solver._iters
+
+
+def logistic_l1(X, y, C):
+    n, p = X.shape
+    assert y.shape == (n,)
+    lambda_val = 1 / C  # Same normalization as sklearn
+
+    def prox(v, t):
+        return torch.relu(v - lambda_val * t) - torch.relu(-v - lambda_val * t)
+
+    A = lo.aslinearoperator(X)  # Construct linear operator from 2D tensor.
+    y = y.clone()
+    y.requires_grad_(True)
+
+    t0 = time.monotonic()
+    solver = alogcv.solver.FISTALogistic(
+        A, prox, torch.zeros(p).to(X.device), device=y.device
+    )
+    beta = solver.solve(y)
+    tf = time.monotonic()
+    y_hat = torch.sigmoid(A @ beta)
+    H = lo.VectorJacobianOperator(y_hat, y)
+
+    return beta, H, tf - t0, solver._iters

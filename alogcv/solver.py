@@ -119,7 +119,7 @@ class ISTASolver(Solver):
         self._x0 = x0
         self._device = device
         self._iters = None
-        self._lipschitz = _compute_lipschitz(
+        self._op_norm_A = _compute_op_norm(
             A,
             torch.ones_like(x0.reshape(-1)) / x0.numel()
             if lipschitz_vec is None
@@ -130,13 +130,13 @@ class ISTASolver(Solver):
 
     def solve(self, y):
         self._y = y
-        self._ATb = self._A.T @ y
+        self._ATy = self._A.T @ y
         x, self._iters = self._prox_grad_solver(
             self._f,
             self._grad_f,
             self._prox_R,
             self._x0.reshape(-1),
-            self._lipschitz,
+            self._lipschitz(),
             **self._parameters
         )
         return x.reshape(self._x0.shape)
@@ -144,17 +144,17 @@ class ISTASolver(Solver):
     def estimate(self, beta):
         return self._A @ beta
 
-    def _f(self, x):
-        return 1 / 2 * torch.linalg.vector_norm(self._A @ x - self._y) ** 2
+    def _f(self, b):
+        return 1 / 2 * torch.linalg.vector_norm(self._A @ b - self._y) ** 2
 
-    def _grad_f(self, x):
-        """f(x) = 12 ||Ax -  b||_2^2 = 1/2 (A x - b)^T (Ax - b) =
-        1/2 (x^T A^T A x - b^T Ax - x^T A^T b + ||b||_2^2) =
-        1/2 x^T A^T A x - x^T A^T b + 1/2 ||b||_2^2
-
-        grad f(x) = A^T A x -  A^T b
+    def _grad_f(self, b):
         """
-        return self._A.T @ (self._A @ x) - self._ATb
+        grad f(x) = A^T A b -  A^T y
+        """
+        return self._A.T @ (self._A @ b) - self._ATy
+
+    def _lipschitz(self):
+        return self._op_norm_A**2
 
 
 class FISTASolver(ISTASolver):
@@ -188,13 +188,22 @@ class FISTASolver(ISTASolver):
     )
 
 
-def _compute_lipschitz(A, x, iters):
-    """
-    Finds Lipschitz constant of _grad f(x) = A^T A x -  A^T b
+class FISTALogistic(FISTASolver):
+    _prox_grad_solver = lambda _, *args: prox_grad.accel_prox_grad_w_linesearch(*args)
 
-    ||A^T A x - A^Tb - A^T A y + A^T b||_2 =
-        ||A^T A x - A^T A y||_2 <= ||A^T A|| ||x - y||_2
-    Where ||A^T A|| = sigma_1(A^T A), the maximal singular value of A^T A
+    def _f(self, b):
+        return torch.log1p(torch.exp(self._A @ b)).sum() - self._ATy @ b
+
+    def _grad_f(self, b):
+        return self._A.T @ (torch.sigmoid(self._A @ b) - self._y)
+
+    def _lipschitz(self):
+        return self._op_norm_A / 4
+
+
+def _compute_op_norm(A, x, iters):
+    """
+    ||A||_Op = sigma_max(A)
     """
     assert torch.linalg.vector_norm(x) > 0
     norm_x = float("inf")
@@ -212,4 +221,4 @@ def _compute_lipschitz(A, x, iters):
             )
     # print(f"Lipschitz constant for A: {norm_x}")
 
-    return norm_x
+    return torch.sqrt(norm_x)
