@@ -182,10 +182,10 @@ class FISTASolver(ISTASolver):
     max_iters, eps control when iterations stop.
     """
 
-    # _prox_grad_solver = lambda _, *args: prox_grad.accel_prox_grad_w_linesearch(*args)
     _prox_grad_solver = lambda _, *args, **kwargs: prox_grad.accel_prox_grad(
         *args, **kwargs
     )
+    _prox_grad_solver = lambda _, *args: prox_grad.accel_prox_grad_w_linesearch(*args)
 
 
 class FISTALogistic(FISTASolver):
