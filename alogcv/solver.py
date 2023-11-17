@@ -149,7 +149,7 @@ class ISTASolver(Solver):
 
     def _grad_f(self, b):
         """
-        grad f(x) = A^T A b -  A^T y
+        grad f(b) = A^T A b -  A^T y
         """
         return self._A.T @ (self._A @ b) - self._ATy
 
@@ -185,11 +185,11 @@ class FISTASolver(ISTASolver):
     _prox_grad_solver = lambda _, *args, **kwargs: prox_grad.accel_prox_grad(
         *args, **kwargs
     )
-    _prox_grad_solver = lambda _, *args: prox_grad.accel_prox_grad_w_linesearch(*args)
+    _prox_grad_solver = lambda _, *args, **kwargs: prox_grad.accel_prox_grad_w_linesearch(*args, **kwargs)
 
 
 class FISTALogistic(FISTASolver):
-    _prox_grad_solver = lambda _, *args: prox_grad.accel_prox_grad_w_linesearch(*args)
+    _prox_grad_solver = lambda _, *args, **kwargs: prox_grad.accel_prox_grad_w_linesearch(*args, **kwargs)
 
     def _f(self, b):
         return torch.log1p(torch.exp(self._A @ b)).sum() - self._ATy @ b

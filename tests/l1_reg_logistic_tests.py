@@ -1,6 +1,8 @@
 import torch
 from torch import autograd, Tensor
 
+import linops as lo
+
 torch.set_default_dtype(torch.float64)
 
 from sklearn.linear_model import LogisticRegression
@@ -17,24 +19,25 @@ import alogcv.utils
 torch.manual_seed(0x364cd)
 
 n = 2000
-p = 1800
+p = 1000
 sigma = 1
-lamdas = np.logspace(-1.9, -0.9, 30)
+#lamdas = np.logspace(-1.9, -0.3, 10)
+lamdas = np.logspace(-2.5, -0.8, 30)
 ms = [30, 50]
-n_trials = 2
+n_trials = 7
 device = "cpu"
 
-beta = torch.ones(p, device=device) / np.sqrt(p // 3)
-beta[p // 3 :] = 0
+beta = 2 * torch.ones(p, device=device) / np.sqrt(p // 20)
+beta[p // 20 :] = 0
 
 
 def generate_sample():
     nu = 5
-    _X = torch.distributions.studentT.StudentT(nu).sample((n, p))
+    #_X = torch.distributions.studentT.StudentT(nu).sample((n, p))
     # _X = (torch.distributions.exponential.Exponential(1.0).sample((n,)) + 0.05)[
     #    :, None
     # ] * torch.distributions.normal.Normal(0, 1).sample((n, p))
-    # _X = torch.distributions.normal.Normal(0, 1).sample((n, p))
+    _X = torch.distributions.normal.Normal(0, 1).sample((n, p))
     _logits = _X @ beta
     # y = _mu + torch.distributions.laplace.Laplace(0, 1).rsample((n,))
     _y = torch.distributions.bernoulli.Bernoulli(logits=_logits).sample()
@@ -46,11 +49,13 @@ X_test, y_test = generate_sample()
 
 
 def loss_fun(y, y_hat):
-    return (y - y_hat) ** 2 / 2
+    # Consider changing loss function to be training
+    # loss function
+    return torch.log1p(torch.exp(y_hat)) - y * y_hat
 
 
 def risk(y, y_hat):
-    return (y - y_hat) ** 2
+    return loss_fun(y, y_hat)
 
 
 risks_oos = np.zeros(len(lamdas))
@@ -67,9 +72,22 @@ for i, lamda in enumerate(tqdm(lamdas)):
     logreg = LogisticRegression("l1", C=C, fit_intercept=False, solver="saga")
     logreg.fit(X, y)
     beta_hat = Tensor(logreg.coef_.squeeze())
-    y_hat = torch.sigmoid(X @ beta_hat)
-    y_hat_test = torch.sigmoid(X_test @ beta_hat)
+    print(f'{torch.linalg.norm(beta_hat)=}')
+    y_hat = (X @ beta_hat)
+    y_hat_test = (X_test @ beta_hat)
     risks_oos[i] = risk(y_test, y_hat_test).sum() / n
+    mask = torch.abs(beta_hat) > 1e-8
+    print("non-zero elements: ", mask.sum().item())
+
+    H = X[:, mask] @ torch.linalg.solve((
+            X.T @ lo.DiagonalOperator(torch.sigmoid(y_hat) * torch.sigmoid(-y_hat)) @ X
+    )[mask, :][:, mask], X.T[mask, :])
+    h = torch.diag(H)
+
+
+    alo_exact = ALOExact(loss_fun, y, y_hat, h)
+
+    risks_alo[i] = alo_exact.eval_risk(risk) / n
 
     beta_est, Hest, tdur, iters = alogcv.utils.logistic_l1(X, y, C)
     print(f"{iters=} in {tdur=}s")
@@ -88,7 +106,7 @@ for i, lamda in enumerate(tqdm(lamdas)):
     # print(alo_bks.eval_risk(risk, order=1))
 
 plt.plot(lamdas, risks_oos, ":k", label="OOS")
-# plt.plot(lamdas, risks_alo, "k", label="alo")
+plt.plot(lamdas, risks_alo, "k", label="alo")
 # plt.plot(lamdas, risks_loo_shortcut, label="loo_shortcut")
 
 ylim = plt.ylim()
@@ -117,7 +135,7 @@ plt.ylim(ylim[0] * 0.9, ylim[1] * 1.1)
 plt.legend()
 plt.xscale("log")
 
-plt.title(f"ALO for Logistic LASSO Regression, ${n=}$, ${p=}$, $\\sigma={sigma}$")
+plt.title(f"ALO for Logistic Regression L1-regularized, ${n=}$, ${p=}$, $\\sigma={sigma}$")
 plt.xlabel("$\lambda$")
 plt.ylabel("Risk")
 

@@ -60,7 +60,8 @@ def logistic_l1(X, y, C):
     )
     beta = solver.solve(y)
     tf = time.monotonic()
-    y_hat = torch.sigmoid(A @ beta)
+    #y_hat = torch.sigmoid(A @ beta)
+    y_hat = A @ beta
     H = lo.VectorJacobianOperator(y_hat, y)
 
     return beta, H, tf - t0, solver._iters

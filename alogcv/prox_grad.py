@@ -40,7 +40,6 @@ def prox_grad_w_linesearch(
     epsilon = eps * math.sqrt(x0.numel())
 
     while err > epsilon and k < max_iters:
-        xprev = x
         lambda_, x, err = _line_search(x, lambda_, f, grad_f, prox_g)
         k += 1
         #print(f'{k=} {lambda_=} {err=}')
