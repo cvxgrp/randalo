@@ -1,20 +1,20 @@
 import numpy as np
 
-min_n_or_ps = [100, 1_000, 10_000, 100_000]
+min_n_or_ss = [100, 1_000, 10_000, 100_000]
 ratios_for_n_over_s = [5, 4, 3, 2, 1, 0.8, 0.6, 0.4, 0.2]
 distributions = ["gauss_iid", "t5_iid", "varying_norm", "equicorrelated", "sparse"]
 sparsity_solution = [True, False]
 
 
 for sparse in sparsity_solution:
-    for min_n_or_p in min_n_or_ps:
+    for min_n_or_s in min_n_or_ss:
         for ratio in ratios_for_n_over_s:
             if ratio <= 1:
-                n = min_n_or_p
+                n = min_n_or_s
                 s = int(n / ratio)
                 p = 5 * s if sparse else s
             else:
-                s = min_n_or_p
+                s = min_n_or_s
                 n = ratio * s
                 p = 5 * s if sparse else s
             beta = np.zeros(p)
@@ -42,7 +42,7 @@ for sparse in sparsity_solution:
 
                 y = X @ beta + rng.normal(size=n)
                 np.savez(
-                    f'{min_n_or_p=}-{ratio=}-{distribution}-{"sparse_beta" if sparse else "dense_beta"}',
+                    f'{min_n_or_s=}-{ratio=}-{distribution}-{"sparse_beta" if sparse else "dense_beta"}',
                     X=X,
                     beta=beta,
                     y=y,
