@@ -75,7 +75,12 @@ def cholesky(X, y, estimator, estimator_params, k, data_dest):
             risk = alo.eval_risk(square_risk, order=1) / n
     tf = time.monotonic()
 
-    np.savez(data_dest, beta_hat=sk_estimator.coef_)
+    np.savez(
+        data_dest,
+        beta_hat=sk_estimator.coef_,
+        time=tf - ti,
+        risk=risk,
+    )
     return tf - ti, risk
 
 
@@ -96,6 +101,8 @@ def unrolling(X, y, estimator, estimator_params, k, data_dest):
         beta_hat=estimator.coef_,
         solver_iters=iters,
         solver_time=solver_time,
+        time=tf - ti,
+        risk=risk,
     )
 
     return tf - ti, risk
@@ -110,7 +117,13 @@ def cv(X, y, estimator, estimator_params, k, data_dest):
     risk = scores.mean()
     tf = time.monotonic()
 
-    np.savez(data_dest, beta_hat=sk_estimator.coef_, cv_scores=scores)
+    np.savez(
+        data_dest,
+        beta_hat=sk_estimator.coef_,
+        cv_scores=scores,
+        time=tf - ti,
+        risk=risk,
+    )
 
     return tf - ti, risk
 
