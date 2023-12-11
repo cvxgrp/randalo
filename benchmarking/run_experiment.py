@@ -4,9 +4,15 @@ from statistics import mean, stdev
 from pathlib import Path
 
 import numpy as np
+from sklearn.linear_model import Lasso
 from sklearn.model_selection import cross_val_score
 import torch
 import linops as lo
+
+import alogcv
+from alogcv.alo import ALORandomized
+
+SEED = 0
 
 
 def square_loss(y, y_hat):
@@ -27,8 +33,6 @@ def load_problem(problem):
 
 
 def sklearn(estimator, estimator_params):
-    from sklearn.linear_model import Lasso
-
     match estimator:
         case "lasso":
             (lamda,) = estimator_params
@@ -39,16 +43,17 @@ class CholeskyOperator(lo.LinearOperator):
     supports_operator_matrix = True
 
     def __init__(self, obj_hessian, X):
-        self._shape = (lhs.shape[0], rhs.shape[1])
-        self.device = lhs.device
+        n = X.shape[0]
+        self._shape = (n, n)
+        self.device = obj_hessian.device
         self._L = torch.linalg.cholesky(obj_hessian)
         self._X = X
         self._adjoint = self
 
     def _matmul_impl(self, u: torch.Tensor) -> torch.Tensor:
-        v = self._X @ u
-        w = torch.linalg.triangular_solve(self._L.T, v, upper=True)
-        x = torch.linalg.triangular_solve(self._L, w, upper=False)
+        v = self._X.T @ u
+        w = torch.linalg.triangular_solve(self._L, v, upper=False)
+        x = torch.linalg.triangular_solve(self._L.T, w, upper=True)
         return self._X @ x
 
 
@@ -58,6 +63,7 @@ def cholesky(X, y, estimator, estimator_params, k, data_dest):
     sk_estimator.fit(X.numpy(), y.numpy())
     beta_hat = torch.Tensor(sk_estimator.coef_)
     y_hat = X @ beta_hat
+    n = X.shape[0]
 
     match estimator:
         case "lasso":
@@ -79,13 +85,15 @@ def unrolling(X, y, estimator, estimator_params, k, data_dest):
         case "lasso":
             (lamda,) = estimator_params
             beta_hat, J, solver_time, iters = alogcv.utils.lasso(X, y, lamda)
+            y_hat = X @ beta_hat
+            n = X.shape[0]
             alo = ALORandomized(square_loss, y, y_hat, J, k)
             risk = alo.eval_risk(square_risk, order=1) / n
     tf = time.monotonic()
 
     np.savez(
         data_dest,
-        beta_hat=sk_estimator.coef_,
+        beta_hat=estimator.coef_,
         solver_iters=iters,
         solver_time=solver_time,
     )
@@ -96,7 +104,9 @@ def unrolling(X, y, estimator, estimator_params, k, data_dest):
 def cv(X, y, estimator, estimator_params, k, data_dest):
     ti = time.monotonic()
     sk_estimator = sklearn(estimator, estimator_params)
-    scores = cross_val_score(sk_estimator, X.numpy(), y.numpy(), cv=k)
+    scores = -cross_val_score(
+        sk_estimator, X.numpy(), y.numpy(), cv=k, scoring="neg_mean_squared_error"
+    )
     risk = scores.mean()
     tf = time.monotonic()
 
@@ -109,7 +119,7 @@ def experiment(
     problem, estimator, estimator_params, method, trials, device, data_dest_path
 ):
     if estimator == "lasso":
-        (lamda,) = esitmator_params
+        (lamda,) = estimator_params
     else:
         raise RuntimeError("only lasso is supported")
 
