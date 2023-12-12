@@ -1,0 +1,12 @@
+min_n_or_s=100-ratio=5-gauss_iid-sparse_beta.npz,lasso,0.04
+min_n_or_s=1000-ratio=5-gauss_iid-sparse_beta.npz,lasso,0.04
+min_n_or_s=10000-ratio=5-gauss_iid-sparse_beta.npz,lasso,0.04
+min_n_or_s=100-ratio=3-gauss_iid-sparse_beta.npz,lasso,0.04
+min_n_or_s=1000-ratio=3-gauss_iid-sparse_beta.npz,lasso,0.04
+min_n_or_s=10000-ratio=3-gauss_iid-sparse_beta.npz,lasso,0.04
+min_n_or_s=100-ratio=5-gauss_iid-sparse_beta.npz,lasso,0.008
+min_n_or_s=1000-ratio=5-gauss_iid-sparse_beta.npz,lasso,0.008
+min_n_or_s=10000-ratio=5-gauss_iid-sparse_beta.npz,lasso,0.008
+min_n_or_s=100-ratio=3-gauss_iid-sparse_beta.npz,lasso,0.008
+min_n_or_s=1000-ratio=3-gauss_iid-sparse_beta.npz,lasso,0.008
+min_n_or_s=10000-ratio=3-gauss_iid-sparse_beta.npz,lasso,0.008
