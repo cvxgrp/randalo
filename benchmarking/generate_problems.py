@@ -23,22 +23,21 @@ for sparse in sparsity_solution:
                 rng = np.random.default_rng(
                     seed=int(str(p) + str(n) + str(s) + str(i) + "1" if sparse else "0")
                 )
-                match distribution:
-                    case "gauss_iid":
-                        X = rng.normal(size=(n, p))
-                    case "t5_iid":
-                        X = rng.standard_t(5, size=(n, p))
-                    case "varying_norm":
-                        X = ...
-                        continue
-                    case "equicorrelated":
-                        x0 = rng.normal(size=n)
-                        a = np.sqrt(0.5)
-                        b = np.sqrt(1 - a**2)
-                        X = a * rng.normal(size=(n, p)) + b * x0[:, None]
-                    case "sparse":
-                        X = ...
-                        continue
+                if distribution == "gauss_iid":
+                    X = rng.normal(size=(n, p))
+                if distribution == "t5_iid":
+                    X = rng.standard_t(5, size=(n, p))
+                if distribution == "varying_norm":
+                    X = ...
+                    continue
+                if distribution == "equicorrelated":
+                    x0 = rng.normal(size=n)
+                    a = np.sqrt(0.5)
+                    b = np.sqrt(1 - a**2)
+                    X = a * rng.normal(size=(n, p)) + b * x0[:, None]
+                if distribution == "sparse":
+                    X = ...
+                    continue
 
                 y = X @ beta + rng.normal(size=n)
                 np.savez(
