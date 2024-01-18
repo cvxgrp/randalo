@@ -24,7 +24,7 @@ For simplicity, assume $B_\infty, B_\reals, A$ are all symmetric.
 Accordingly we note that $(A + B) x = y$ if and only if $(A + B_\reals) x = y'$, $B_\infty x = 0$, and $y' = \Pi y$, where $\Pi = I - B_\infty (B_\infty^T B_\infty)^\dagger B_\infty^T$.
 The idea is that any component of $y$ in the column space of $B_\infty$, can be created with an infinitesimal mass in $x$, so we can remove those dimensions from $y$.
 This is necessary, because $x$ cannot have non-infinitesimal mass outside the null space of $B_\infty$ and satisfy the first equation.
-From here, we simplify this with $y' + B_\infty (B_\infty^T B_\infty)^\dagger B_\infty^T y'' = y $ and backsubstituting to get
+From here, we simplify this with $y'+B_\infty (B_\infty^T B_\infty)^\dagger B_\infty^T y'' = y$ and backsubstituting to get
 $(A + B_\reals) x + B_\infty (B_\infty^T B_\infty)^\dagger B_\infty^T y'' = y$
 Here we can note that since $\mathrm{Col}(B_\infty (B_\infty^T B_\infty)^\dagger B_\infty^T) = \mathrm{Col}(B_\infty^T)$, we have that $B_\infty (B_\infty^T B_\infty)^\dagger B_\infty^Ty'' = B_\infty^T \nu$ for some $\nu$ for any $y''$.
 
