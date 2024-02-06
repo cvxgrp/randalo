@@ -70,7 +70,8 @@ def logistic_l1(X, y, C):
 class GeneralizedHessianOperator(lo.LinearOperator):
     supports_operator_matrix = True
     def __init__(self, X, l_diag, D, r_diag):
-        self._shape = (X.shape[0], X.shape[0])
+        self._n, self._p = X.shape
+        self._shape = (self._n, self._n)
         self._adjoint = self # Check this assumption
         self._X = X
 
@@ -92,7 +93,7 @@ class GeneralizedHessianOperator(lo.LinearOperator):
     def _matmul_impl(self, v):
         RHS = torch.cat([self._X.T @ v, torch.zeros(
             (self._zero_pad, *v.shape[1:]), device=v.device)])
-        return self._X @ (torch.linalg.ldl_solve(self._LD, self._pivots, RHS))[:-self._zero_pad]
+        return self._X @ (torch.linalg.ldl_solve(self._LD, self._pivots, RHS))[:self._p]
 
 def jvp_generalized_hessian(
         X, l_diag, D, r_diag, Z

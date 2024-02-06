@@ -88,11 +88,16 @@ for i, lamda in enumerate(tqdm(lamdas)):
 
     for j, m in enumerate(ms):
         for trial in range(n_trials):
-            alo_cf_hessian = ALORandomized(loss_fun, y, y_hat, H, m)
+            gen = torch.Generator()
+            gen.manual_seed(1)
+            alo_cf_hessian = ALORandomized(loss_fun, y, y_hat, H, m, generator=gen)
 
             risks_cf_hessian[i, j, trial] = alo_cf_hessian.eval_risk(risk, order=1) / n
 
-            alo_qp = ALORandomized(loss_fun, y, y_hat, H_qp, m)
+            gen = torch.Generator()
+            gen.manual_seed(1)
+
+            alo_qp = ALORandomized(loss_fun, y, y_hat, H_qp, m, generator=gen)
             risks_qp[i, j, trial] = alo_qp.eval_risk(risk, order=1) / n
 
 plt.plot(lamdas, risks_gen, ":k", label="gen")
