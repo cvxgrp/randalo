@@ -65,3 +65,23 @@ def logistic_l1(X, y, C):
     H = lo.VectorJacobianOperator(y_hat, y)
 
     return beta, H, tf - t0, solver._iters
+
+
+def jvp_generalized_hessian(
+        X, l_diag, D, r_diag, Z
+):
+    
+    l_finite_mask = torch.isfinite(l_diag)
+    r_finite_mask = torch.isfinite(r_diag)
+    H = X.T[:, l_finite_mask] @ lo.DiagonalOperator(l_diag[l_finite_mask]) @ X[l_finite_mask, :] + \
+        D.T[:, r_finite_mask] @ lo.DiagonalOperator(r_diag[l_finite_mask]) @ D[l_finite_mask, :]
+    A = D[~r_finite_mask, :]
+    assert torch.sum(l_finite_mask).item() == l_diag.numel()
+
+    top_row = H.cat(A.T, dim=1)
+    bottom_row = A.cat(torch.zeros(n := top_row.shape[1] - A.shape[1], n, device=A.device), dim=1)
+    M = top_row.cat(bottom_row, dim=0)
+
+    LD, pivots = torch.linalg.ldl_factor(M)
+
+    return X @ linalg.ldl_solve(LD, pivots, X.T @ Z)
