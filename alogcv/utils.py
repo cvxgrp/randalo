@@ -67,6 +67,33 @@ def logistic_l1(X, y, C):
     return beta, H, tf - t0, solver._iters
 
 
+class GeneralizedHessianOperator(lo.LinearOperator):
+    supports_operator_matrix = True
+    def __init__(self, X, l_diag, D, r_diag):
+        self._shape = (X.shape[0], X.shape[0])
+        self._adjoint = self # Check this assumption
+        self._X = X
+
+        l_finite_mask = torch.isfinite(l_diag)
+        r_finite_mask = torch.isfinite(r_diag)
+        H = X.T[:, l_finite_mask] @ lo.DiagonalOperator(l_diag[l_finite_mask]) @ X[l_finite_mask, :] + \
+            D.T[:, r_finite_mask] @ lo.DiagonalOperator(r_diag[r_finite_mask]) @ D[r_finite_mask, :]
+        A = D[~r_finite_mask, :]
+        assert torch.sum(l_finite_mask).item() == l_diag.numel()
+
+
+        top_row = torch.cat([H, A.T], dim=1)
+        self._zero_pad = top_row.shape[1] - A.shape[1]
+        bottom_row = torch.cat([A, torch.zeros(self._zero_pad, self._zero_pad, device=A.device)], dim=1)
+        M = torch.cat([top_row, bottom_row], dim=0)
+
+        self._LD, self._pivots = torch.linalg.ldl_factor(M)
+
+    def _matmul_impl(self, v):
+        RHS = torch.cat([self._X.T @ v, torch.zeros(
+            (self._zero_pad, *v.shape[1:]), device=v.device)])
+        return self._X @ (torch.linalg.ldl_solve(self._LD, self._pivots, RHS))[:-self._zero_pad]
+
 def jvp_generalized_hessian(
         X, l_diag, D, r_diag, Z
 ):
