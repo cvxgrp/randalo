@@ -206,6 +206,7 @@ class ALORandomized(ALOBase):
         jac: LinearOperator,
         m: int,
         generator: Optional[torch.Generator] = None,
+        dtype: Optional[torch.dtype] = torch.float64,
     ):
         """Initialize a randomized ALO estimator.
 
@@ -235,6 +236,8 @@ class ALORandomized(ALOBase):
             generator.seed()
         self._generator = generator
 
+        self.dtype = dtype
+
         self._best_transformed_diag_jac = None
         self._transformed_diag_jac_mean = None
         self._transformed_diag_jac_std = None
@@ -253,7 +256,13 @@ class ALORandomized(ALOBase):
         [Tensor, Tensor]
             The matrix-vector products and the random vectors.
         """
-        Omega = torch.randint(0, 2, (self.n, m), generator=self._generator) * 2.0 - 1
+        Omega = (
+            torch.randint(
+                0, 2, (self.n, m), generator=self._generator, dtype=self.dtype
+            )
+            * 2.0
+            - 1
+        )
         return self._jac @ Omega, Omega
 
     def do_diag_jac_estims_upto(self, m: int) -> None:
