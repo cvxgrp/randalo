@@ -12,7 +12,7 @@
     },
     "method": "lasso",
     "method_kwargs": {
-        "lamda": 0.01,
+        "lamda0": 1.0,
         "fit_intercept": false
     },
     "risk": "squared_error",
