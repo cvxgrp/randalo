@@ -103,7 +103,9 @@ class SeparableRegularizerJacobian(LinearOperator):
 
     @property
     def diag(self):
-        return self.X_mask @ torch.linalg.ldl_solve(self.LD, self.pivots, self.X_mask.T)
+        return self.X_mask @ torch.linalg.ldl_solve(
+            self.LD, self.pivots, self.X_mask.T * self.loss_hessian_diag[None, :]
+        )
 
 
 class SeparableRegularizerMixin(ABC):
