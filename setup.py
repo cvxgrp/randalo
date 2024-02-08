@@ -5,6 +5,7 @@ from setuptools import setup, find_packages
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+"""
 # get all the git tags from the cmd line that follow our versioning pattern
 git_tags = subprocess.Popen(
     ["git", "tag", "--list", "v*[0-9]", "--sort=version:refname"],
@@ -17,11 +18,13 @@ tags.sort()
 
 
 # PEP 440 won't accept the v in front, so here we remove it, strip the new line and decode the byte stream
-VERSION_FROM_GIT_TAG = tags[-1][1:] if len(tags) > 0 else "v0.0"
+VERSION_FROM_GIT_TAG = tags[-1][1:] if len(tags) > 0 else "0.0"
+"""
 
 setup(
     name="alogcv",
-    version=VERSION_FROM_GIT_TAG,  # Required
+    #version=VERSION_FROM_GIT_TAG,
+    version='0.0',  # Required
     setup_requires=["setuptools>=18.0"],
     packages=find_packages(exclude=["notebooks"]),  # Required
     install_requires=[
