@@ -12,7 +12,7 @@ git_tags = subprocess.Popen(
 )
 tags = git_tags.stdout.read()
 git_tags.stdout.close()
-tags = tags.decode("utf-8").split("\n")
+tags = [tag for tag in tags.decode("utf-8").split("\n") if tag != '']
 tags.sort()
 
 
