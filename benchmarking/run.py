@@ -12,7 +12,14 @@ from alogcv.alo import ALOExact, ALORandomized
 from alogcv.models import LinearMixin, LassoModel
 
 
-CLOCK = time.monotonic
+class Timer(object):
+    def __enter__(self):
+        self.tic = time.monotonic()
+        return self
+
+    def __exit__(self, *args):
+        self.toc = time.monotonic()
+        self.elapsed = self.toc - self.tic
 
 
 def extract_dict_keys(d, keys):
@@ -53,12 +60,14 @@ def get_data(data_config, rng):
     return X_train, y_train, gen_risk, test_risk
 
 
-def model_lookup(method, method_kwargs):
+def model_lookup(config):
 
-    method_kwargs = method_kwargs.copy()
+    method = config["method"]
+    method_kwargs = config["method_kwargs"].copy()
 
     if method == "lasso":
-        lamda = method_kwargs.pop("lamda")
+        p = config["data"]["p"]
+        lamda = method_kwargs.pop("lamda0") / np.sqrt(p)
         return LassoModel(lamda, sklearn_lasso_kwargs=method_kwargs)
 
 
@@ -121,86 +130,79 @@ if __name__ == "__main__":
     n, p = X_train.shape
 
     # Fit and evaluate the model on the whole data
-    model = model_lookup(config["method"], config["method_kwargs"])
+    model = model_lookup(config)
     risk_fun = risk_lookup(config["risk"])
 
     print("Fitting model...")
-    tic = CLOCK()
-    model.fit(X_train, y_train)
-    toc = CLOCK()
-    results["full_train_time"] = toc - tic
+    with Timer() as timer:
+        model.fit(X_train, y_train)
+    results["full_train_time"] = timer.elapsed
 
-    tic = CLOCK()
-    results["gen_risk"] = gen_risk(model)
-    toc = CLOCK()
-    results["gen_risk_time"] = toc - tic
+    with Timer() as timer:
+        results["gen_risk"] = gen_risk(model)
+    results["gen_risk_time"] = timer.elapsed
 
-    tic = CLOCK()
-    results["test_risk"] = test_risk(model, risk_fun)
-    toc = CLOCK()
-    results["test_risk_time"] = toc - tic
+    with Timer() as timer:
+        results["test_risk"] = test_risk(model, risk_fun)
+    results["test_risk_time"] = timer.elapsed
 
     # Perform cross-validation
     for k in config["cv_k"]:
         print(f"Performing {k}-fold cross-validation...")
-        tic = CLOCK()
-        results[f"cv_{k}_risk"] = cross_val_risk(model, X_train, y_train, risk_fun, k=k)
-        toc = CLOCK()
-        results[f"cv_{k}_risk_time"] = toc - tic
+        with Timer() as timer:
+            results[f"cv_{k}_risk"] = cross_val_risk(
+                model, X_train, y_train, risk_fun, k=k
+            )
+        results[f"cv_{k}_risk_time"] = timer.elapsed
 
     print("Precomputing ALO Jacobian...")
     device = torch.device(config["device"])
-    tic = CLOCK()
-    model.jac(device)
-    toc = CLOCK()
-    results["jac_time"] = toc - tic
+    with Timer() as timer:
+        model.jac(device)
+    results["jac_time"] = timer.elapsed
 
     # Perform ALO
     y_train_torch = torch.tensor(y_train, device=device)
     y_hat_torch = torch.tensor(model.predict(X_train), device=device)
 
     print("Performing exact ALO...")
-    tic = CLOCK()
-    diag_jac = get_linop_diag(model.jac(device))
-    alo_exact = ALOExact(
-        model.loss_fun,
-        y_train_torch,
-        y_hat_torch,
-        diag_jac,
-    )
-    results["alo_exact_risk"] = alo_exact.eval_risk(risk_fun) / n
-    toc = CLOCK()
-    results["alo_exact_time"] = toc - tic
+    with Timer() as timer:
+        diag_jac = get_linop_diag(model.jac(device))
+        alo_exact = ALOExact(
+            model.loss_fun,
+            y_train_torch,
+            y_hat_torch,
+            diag_jac,
+        )
+        results["alo_exact_risk"] = alo_exact.eval_risk(risk_fun) / n
+    results["alo_exact_time"] = timer.elapsed
 
     alo = None
     running_matvec_time = 0
     for m in sorted(config["alo_m"]):
         print(f"Performing randomized ALO up to {m} matvecs...")
-        tic = CLOCK()
-        if alo is None:
-            alo = ALORandomized(
-                model.loss_fun,
-                y_train_torch,
-                y_hat_torch,
-                model.jac(device),
-                m,
-                generator=gen,
-            )
-        else:
-            alo.do_diag_jac_estims_upto(m)
-        toc = CLOCK()
-        running_matvec_time += toc - tic
+        with Timer() as timer:
+            if alo is None:
+                alo = ALORandomized(
+                    model.loss_fun,
+                    y_train_torch,
+                    y_hat_torch,
+                    model.jac(device),
+                    m,
+                    generator=gen,
+                )
+            else:
+                alo.do_diag_jac_estims_upto(m)
+        running_matvec_time += timer.elapsed
         results[f"alo_{m}_matvec_time"] = running_matvec_time
 
-        tic = CLOCK()
-        results[f"alo_{m}_bks_risk"] = alo.eval_risk(risk_fun, order=None) / n
-        toc = CLOCK()
-        results[f"alo_{m}_bks_risk_time"] = toc - tic
+        with Timer() as timer:
+            results[f"alo_{m}_bks_risk"] = alo.eval_risk(risk_fun, order=None) / n
+        results[f"alo_{m}_bks_risk_time"] = timer.elapsed
 
-        tic = CLOCK()
-        results[f"alo_{m}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / len(y_train)
-        toc = CLOCK()
-        results[f"alo_{m}_poly_risk_time"] = toc - tic
+        with Timer() as timer:
+            results[f"alo_{m}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / n
+        results[f"alo_{m}_poly_risk_time"] = timer.elapsed
 
     # Save the results
     with open(args.results_file, "w") as f:

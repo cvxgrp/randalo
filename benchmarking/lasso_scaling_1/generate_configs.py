@@ -8,7 +8,6 @@ with open("base_config.json") as f:
 n0 = config["data"]["n_train"]
 p0 = config["data"]["p"]
 s0 = config["data"]["s"]
-lamda0 = config["method_kwargs"]["lamda"]
 
 os.makedirs("configs", exist_ok=True)
 
@@ -17,7 +16,6 @@ for scale in [10, 20, 50, 100]:
     config["data"]["n_train"] = n0 * scale
     config["data"]["p"] = p = p0 * scale
     config["data"]["s"] = s0 * scale
-    config["method_kwargs"]["lamda"] = lamda0 / p**0.5
 
     for seed in range(5):
         config["seed"] = seed
