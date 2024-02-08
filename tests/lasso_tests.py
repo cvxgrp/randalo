@@ -1,3 +1,5 @@
+import time
+
 import torch
 from torch import autograd, Tensor
 
@@ -16,8 +18,8 @@ import alogcv.utils
 
 torch.manual_seed(0x364ef)
 
-n = 300
-s = 100
+n = 30_000
+s = 10_000
 p = 5 * s
 sigma = 1
 lamdas = np.logspace(-2, 0, 30)
@@ -64,17 +66,23 @@ for i, lamda in enumerate(tqdm(lamdas)):
     lasso.fit(X, y)
     beta_hat = Tensor(lasso.coef_)
 
+    t0i = time.time()
     mask = torch.abs(beta_hat) > 1e-8
-    print("non-zero elements: ", mask.sum().item())
 
     X_lasso = X[:, mask]
     Q, _ = torch.linalg.qr(X_lasso)
     H = Q @ Q.T
     h = torch.diag(H)
+    t0f = time.time()
 
+    print("non-zero elements: ", mask.sum().item())
+
+    t1i = time.time()
     inf_mask = torch.zeros(p)
     inf_mask[~mask] = torch.inf
     H_qp = alogcv.utils.GeneralizedHessianOperator(X, torch.ones(n), torch.eye(p), inf_mask)
+    t1f = time.time()
+    print(f"Exact: {t0f - t0i}; QP: {t1f - t1i}")
 
     y_hat = X @ beta_hat
 
