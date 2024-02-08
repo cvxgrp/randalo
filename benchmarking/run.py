@@ -98,10 +98,6 @@ def cross_val_risk(model, X, y, risk_fun, k=5):
     return np.mean(scores)
 
 
-def get_linop_diag(A):
-    return torch.diag(A @ torch.eye(A.shape[1], dtype=A.dtype, device=A.device))
-
-
 if __name__ == "__main__":
 
     # Parse command line arguments
@@ -167,7 +163,7 @@ if __name__ == "__main__":
 
     print("Performing exact ALO...")
     with Timer() as timer:
-        diag_jac = get_linop_diag(model.jac(device))
+        diag_jac = model.jac(device).diag
         alo_exact = ALOExact(
             model.loss_fun,
             y_train_torch,

@@ -101,6 +101,10 @@ class SeparableRegularizerJacobian(LinearOperator):
     def _adjoint(self):
         return self
 
+    @property
+    def diag(self):
+        return self.X_mask @ torch.linalg.ldl_solve(self.LD, self.pivots, self.X_mask.T)
+
 
 class SeparableRegularizerMixin(ABC):
 
