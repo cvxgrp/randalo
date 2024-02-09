@@ -9,7 +9,6 @@ from linops import LinearOperator
 
 
 class ALOModel(ABC):
-
     def __init__(self):
         self.needs_compute_jac = True
         self.fitted = False
@@ -55,7 +54,6 @@ class ALOModel(ABC):
 
 
 class LinearMixin(ABC):
-
     @property
     def coef_(self):
         self._fitted_check()
@@ -66,7 +64,6 @@ class SeparableRegularizerJacobian(LinearOperator):
     supports_operator_matrix = True
 
     def __init__(self, X, loss_hessian_diag, reg_hessian_diag):
-
         self._shape = (X.shape[0], X.shape[0])
         self.device = X.device
         self.dtype = X.dtype
@@ -80,7 +77,6 @@ class SeparableRegularizerJacobian(LinearOperator):
         self.LD, self.pivots = torch.linalg.ldl_factor(H)
 
     def _matmul_impl(self, A):
-
         if A.ndim == 1:
             A = A[:, None]
             need_squeeze = True
@@ -101,7 +97,6 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
     supports_operator_matrix = True
 
     def __init__(self, X, D, loss_hessian_diag, reg_hessian_diag):
-
         self._shape = (X.shape[0], X.shape[0])
         self.device = X.device
         self.dtype = X.dtype
@@ -112,23 +107,23 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
         self.reg_hessian_diag_mask = reg_hessian_diag[mask]
 
         if torch.linalg.vector_norm(self.reg_hessian_diag_mask) <= 1e-9:
-            H_sqrt = (loss_hessian_diag[:, None] * self.X)
-            _, self.H_R = torch.linalg.qr(H_sqrt, mode='R')
+            H_sqrt = loss_hessian_diag[:, None] * self.X
+            _, self.H_R = torch.linalg.qr(H_sqrt, mode="R")
         else:
-        
             H = self.X.T @ (loss_hessian_diag[:, None] * self.X) + self.D_mask.T @ (
-                    self.reg_hessian_diag_mask[:, None] * self.D_mask
+                self.reg_hessian_diag_mask[:, None] * self.D_mask
             )
             self.H_R = torch.linalg.cholesky(H, upper=True)
         self.D_nmask = D[~mask, :]
-        
-        M = self.D_nmask @ torch.linalg.solve_triangular(self.H_R.T,
-                torch.linalg.solve_triangular(self.H_R, self.D_nmask.T, upper=True),
-                                                         upper=False)
+
+        M = self.D_nmask @ torch.linalg.solve_triangular(
+            self.H_R.T,
+            torch.linalg.solve_triangular(self.H_R, self.D_nmask.T, upper=True),
+            upper=False,
+        )
         self.M_L = torch.linalg.cholesky(M)
 
     def _matmul_impl(self, A):
-
         if A.ndim == 1:
             A = A[:, None]
             need_squeeze = True
@@ -136,17 +131,23 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
             need_squeeze = False
 
         V = self.X.T @ (self.loss_hessian_diag[:, None] * A)
-        HinvV = torch.linalg.solve_triangular(self.H_R.T,
-                    torch.linalg.solve_triangular(self.H_R, V, upper=True),
-                                                         upper=False)
+        HinvV = torch.linalg.solve_triangular(
+            self.H_R.T,
+            torch.linalg.solve_triangular(self.H_R, V, upper=True),
+            upper=False,
+        )
         DHinvV = self.D_nmask @ HinvV
-        lagrange_multiples = torch.linalg.solve_triangular(self.M_L,
-                    torch.linalg.solve_triangular(self.M_L.T, DHinvV, upper=True),
-                                                         upper=False)
+        lagrange_multiples = torch.linalg.solve_triangular(
+            self.M_L,
+            torch.linalg.solve_triangular(self.M_L.T, DHinvV, upper=True),
+            upper=False,
+        )
 
-        Z = HinvV - torch.linalg.solve_triangular(self.H_R.T,
-                    torch.linalg.solve_triangular(self.H_R, lagrange_multiples, upper=True),
-                                                         upper=False)
+        Z = HinvV - torch.linalg.solve_triangular(
+            self.H_R.T,
+            torch.linalg.solve_triangular(self.H_R, lagrange_multiples, upper=True),
+            upper=False,
+        )
 
         if need_squeeze:
             Z = Z[..., 0]
@@ -155,13 +156,15 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
 
     @property
     def diag(self):
-        return self.X_mask @ torch.linalg.ldl_solve(
-            self.LD, self.pivots, self.X_mask.T * self.loss_hessian_diag[None, :]
+        return torch.diag(
+            self.X_mask
+            @ torch.linalg.ldl_solve(
+                self.LD, self.pivots, self.X_mask.T * self.loss_hessian_diag[None, :]
+            )
         )
 
 
 class SeparableRegularizerMixin(ABC):
-
     @property
     @abstractmethod
     def loss_hessian_diag_(self):
@@ -178,8 +181,9 @@ class SeparableRegularizerMixin(ABC):
             torch.tensor(self.loss_hessian_diag_, device=device),
             torch.tensor(self.reg_hessian_diag_, device=device),
         )
-class LinearSeparableRegularizerMixin(ABC):
 
+
+class LinearSeparableRegularizerMixin(ABC):
     @property
     @abstractmethod
     def loss_hessian_diag_(self):
@@ -201,8 +205,6 @@ class LinearSeparableRegularizerMixin(ABC):
             torch.tensor(self.loss_hessian_diag_, device=device),
             torch.tensor(self.reg_hessian_diag_, device=device),
         )
-
-
 
 
 class LassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
@@ -246,6 +248,7 @@ class LassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
     def loss_fun(y, y_hat):
         return (y - y_hat) ** 2 / 2
 
+
 class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOModel):
     """First Difference Model for ALO computation
 
@@ -271,9 +274,15 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
 
             def fit(s, X, y):
                 import cvxpy as cp
+
                 b = cp.Variable(X.shape[1])
                 t = cp.Variable()
-                prob = Problem(cp.Minimize(t**2 / (2 * X.shape[0]) + self.lamda * cp.norm(cp.diff(b), 1)), [cp.SOC(y - X @ b, t)])
+                prob = Problem(
+                    cp.Minimize(
+                        t**2 / (2 * X.shape[0]) + self.lamda * cp.norm(cp.diff(b), 1)
+                    ),
+                    [cp.SOC(y - X @ b, t)],
+                )
                 prob.solve(cp.CLARABEL, **cvxpy_kwargs)
                 s.coef_ = torch.Tensor(b.value)
 

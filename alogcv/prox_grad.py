@@ -42,7 +42,7 @@ def prox_grad_w_linesearch(
     while err > epsilon and k < max_iters:
         lambda_, x, err = _line_search(x, lambda_, f, grad_f, prox_g)
         k += 1
-        #print(f'{k=} {lambda_=} {err=}')
+        # print(f'{k=} {lambda_=} {err=}')
 
     return x, k
 
@@ -68,7 +68,7 @@ def accel_prox_grad_w_linesearch(
         xprev = x
         lambda_, x, err = _line_search(y, lambda_, f, grad_f, prox_g)
         k += 1
-        #print(f'{k=} {lambda_=} {err=}')
+        # print(f'{k=} {lambda_=} {err=}')
 
     return x, k
 
@@ -125,6 +125,6 @@ def accel_prox_grad(
         x = prox_g(intermediate_y, lambda_)
         k += 1
         err = torch.linalg.vector_norm(grad_f(x) - 1 / lambda_ * (x - intermediate_y))
-        #print(f"{k=}, {err=}, {lambda_=}")
+        # print(f"{k=}, {err=}, {lambda_=}")
 
     return x, k

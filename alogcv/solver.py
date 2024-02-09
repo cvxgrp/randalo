@@ -185,11 +185,19 @@ class FISTASolver(ISTASolver):
     _prox_grad_solver = lambda _, *args, **kwargs: prox_grad.accel_prox_grad(
         *args, **kwargs
     )
-    _prox_grad_solver = lambda _, *args, **kwargs: prox_grad.accel_prox_grad_w_linesearch(*args, **kwargs)
+    _prox_grad_solver = (
+        lambda _, *args, **kwargs: prox_grad.accel_prox_grad_w_linesearch(
+            *args, **kwargs
+        )
+    )
 
 
 class FISTALogistic(FISTASolver):
-    _prox_grad_solver = lambda _, *args, **kwargs: prox_grad.accel_prox_grad_w_linesearch(*args, **kwargs)
+    _prox_grad_solver = (
+        lambda _, *args, **kwargs: prox_grad.accel_prox_grad_w_linesearch(
+            *args, **kwargs
+        )
+    )
 
     def _f(self, b):
         return torch.log1p(torch.exp(self._A @ b)).sum() - self._ATy @ b
