@@ -1,13 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=lasso_scaling_1
-#SBATCH --output=lasso_scaling_1/output/slurm-%A_%a.out
+#SBATCH --job-name=lasso_scaling_16
+#SBATCH --output=lasso_scaling_16/output/slurm-%A_%a.out
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=16
 #SBATCH --mem-per-cpu=16GB
 #SBATCH --partition=candes
 #SBATCH --array=1-720
 
-BASE_DIR=$HOME/alo/benchmarking/lasso_scaling_1
+BASE_DIR=$HOME/alo/benchmarking/lasso_scaling_16
 CONFIGS_DIR=$BASE_DIR/configs
 RESULTS_DIR=$BASE_DIR/results
 mkdir -p $RESULTS_DIR

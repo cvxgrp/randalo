@@ -4,10 +4,10 @@
     "device": "cpu",
     "data": {
         "src": "iid_normal_sparse_awgn",
-        "n_train": 5000,
+        "n_train": 10,
         "n_test": 10000,
-        "p": 5000,
-        "s": 500,
+        "p": 10,
+        "s": 1,
         "sigma": 0.1
     },
     "method": "lasso",
