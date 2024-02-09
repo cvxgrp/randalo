@@ -63,6 +63,7 @@ class LinearMixin(ABC):
 
 
 class SeparableRegularizerJacobian(LinearOperator):
+    supports_operator_matrix = True
 
     def __init__(self, X, loss_hessian_diag, reg_hessian_diag):
 
@@ -95,11 +96,62 @@ class SeparableRegularizerJacobian(LinearOperator):
 
         return self.X_mask @ Z
 
-    def __matmul__(self, A):
-        return self._matmul_impl(A)
 
-    def _adjoint(self):
-        return self
+class LinearSeparableRegularizerJacobian(LinearOperator):
+    supports_operator_matrix = True
+
+    def __init__(self, X, D, loss_hessian_diag, reg_hessian_diag):
+
+        self._shape = (X.shape[0], X.shape[0])
+        self.device = X.device
+        self.dtype = X.dtype
+        self.loss_hessian_diag = loss_hessian_diag
+
+        self.X = X
+        self.D_mask = D[mask, :]
+        self.reg_hessian_diag_mask = reg_hessian_diag[mask]
+
+        if torch.linalg.vector_norm(self.reg_hessian_diag_mask) <= 1e-9:
+            H_sqrt = (loss_hessian_diag[:, None] * self.X)
+            _, self.H_R = torch.linalg.qr(H_sqrt, mode='R')
+        else:
+        
+            H = self.X.T @ (loss_hessian_diag[:, None] * self.X) + self.D_mask.T @ (
+                    self.reg_hessian_diag_mask[:, None] * self.D_mask
+            )
+            self.H_R = torch.linalg.cholesky(H, upper=True)
+        self.D_nmask = D[~mask, :]
+        
+        M = self.D_nmask @ torch.linalg.solve_triangular(self.H_R.T,
+                torch.linalg.solve_triangular(self.H_R, self.D_nmask.T, upper=True),
+                                                         upper=False)
+        self.M_L = torch.linalg.cholesky(M)
+
+    def _matmul_impl(self, A):
+
+        if A.ndim == 1:
+            A = A[:, None]
+            need_squeeze = True
+        else:
+            need_squeeze = False
+
+        V = self.X.T @ (self.loss_hessian_diag[:, None] * A)
+        HinvV = torch.linalg.solve_triangular(self.H_R.T,
+                    torch.linalg.solve_triangular(self.H_R, V, upper=True),
+                                                         upper=False)
+        DHinvV = self.D_nmask @ HinvV
+        lagrange_multiples = torch.linalg.solve_triangular(self.M_L,
+                    torch.linalg.solve_triangular(self.M_L.T, DHinvV, upper=True),
+                                                         upper=False)
+
+        Z = HinvV - torch.linalg.solve_triangular(self.H_R.T,
+                    torch.linalg.solve_triangular(self.H_R, lagrange_multiples, upper=True),
+                                                         upper=False)
+
+        if need_squeeze:
+            Z = Z[..., 0]
+
+        return self.X @ Z
 
     @property
     def diag(self):
@@ -126,6 +178,31 @@ class SeparableRegularizerMixin(ABC):
             torch.tensor(self.loss_hessian_diag_, device=device),
             torch.tensor(self.reg_hessian_diag_, device=device),
         )
+class LinearSeparableRegularizerMixin(ABC):
+
+    @property
+    @abstractmethod
+    def loss_hessian_diag_(self):
+        pass
+
+    @property
+    @abstractmethod
+    def reg_hessian_diag_(self):
+        pass
+
+    @abstractmethod
+    def generate_D_from_X(self, X):
+        pass
+
+    def _compute_jac(self, device=None):
+        return SeparableRegularizerJacobian(
+            torch.tensor(self.X, device=device),
+            torch.tensor(self.generate_D_from_X(self.X), device=device),
+            torch.tensor(self.loss_hessian_diag_, device=device),
+            torch.tensor(self.reg_hessian_diag_, device=device),
+        )
+
+
 
 
 class LassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
@@ -168,3 +245,58 @@ class LassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
     @staticmethod
     def loss_fun(y, y_hat):
         return (y - y_hat) ** 2 / 2
+
+class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOModel):
+    """First Difference Model for ALO computation
+
+    The optimization objective is given by
+    ```
+    1 / (2 * n)) * ||y - Xw||^2_2 + lamda * ||D w||_1
+    ```
+    where D = is torch.diff
+    """
+
+    def __init__(
+        self,
+        lamda,
+        cvxpy_kwargs={},
+    ):
+        super().__init__()
+        self.lamda = lamda
+        self.cvxpy_kwargs = cvxpy_kwargs
+
+    def get_new_model(self):
+        class C:
+            coef_ = None
+
+            def fit(s, X, y):
+                import cvxpy as cp
+                b = cp.Variable(X.shape[1])
+                t = cp.Variable()
+                prob = Problem(cp.Minimize(t**2 / (2 * X.shape[0]) + self.lamda * cp.norm(cp.diff(b), 1)), [cp.SOC(y - X @ b, t)])
+                prob.solve(cp.CLARABEL, **cvxpy_kwargs)
+                s.coef_ = torch.Tensor(b.value)
+
+            def predict(s, x):
+                return x @ s.coef_
+
+        return C()
+
+    @property
+    def loss_hessian_diag_(self):
+        self._fitted_check()
+        return torch.ones(self.X.shape[0]) / self.X.shape[0]
+
+    @property
+    def reg_hessian_diag_(self):
+        self._fitted_check()
+        hess = torch.zeros(self.X.shape[1])
+        hess[torch.diff(self.model.coef_) <= 1e-9] = float("inf")
+        return hess
+
+    @staticmethod
+    def loss_fun(y, y_hat):
+        return (y - y_hat) ** 2 / 2
+
+    def generate_D_from_X(self, X):
+        return torch.diff(torch.eye(X.shape[1]))
