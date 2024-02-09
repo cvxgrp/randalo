@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod, abstractstaticmethod
 
+import numpy as np
+import torch
+
 from sklearn.linear_model import Lasso
 from sklearn.exceptions import NotFittedError
-
-import torch
 
 from linops import LinearOperator
 
