@@ -7,64 +7,153 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 
-def lasso_scaling_1():
+def load_results(results_dir):
 
-    results_dir = os.path.join("lasso_scaling_1", "results")
+    aggregate_fn = os.path.join(results_dir, "aggregate.json")
+
+    if os.path.isfile(aggregate_fn):
+        with open(aggregate_fn, "r") as f:
+            return json.load(f)
+
     results_files = glob.glob("run_*.json", root_dir=results_dir)
     results = []
     for results_file in results_files:
         with open(os.path.join(results_dir, results_file), "r") as f:
             results.append(json.load(f))
 
-    ns = sorted(
-        set(sorted([results["config"]["data"]["n_train"] for results in results]))
-    )
-    seeds = sorted(set(sorted([results["config"]["seed"] for results in results])))
-    cv_k = results[0]["config"]["cv_k"]
-    alo_m = results[0]["config"]["alo_m"]
+    with open(aggregate_fn, "w") as f:
+        json.dump(results, f)
 
-    gen_risks = np.zeros((len(ns), len(seeds)))
-    test_risks = np.zeros((len(ns), len(seeds)))
-    cv_risks = np.zeros((len(ns), len(seeds), len(cv_k)))
-    cv_times = np.zeros((len(ns), len(seeds), len(cv_k)))
-    alo_exact_risks = np.zeros((len(ns), len(seeds)))
-    alo_exact_times = np.zeros((len(ns), len(seeds)))
-    alo_bks_risks = np.zeros((len(ns), len(seeds), len(alo_m)))
-    alo_bks_times = np.zeros((len(ns), len(seeds), len(alo_m)))
-    alo_poly_risks = np.zeros((len(ns), len(seeds), len(alo_m)))
-    alo_poly_times = np.zeros((len(ns), len(seeds), len(alo_m)))
+    return results
+
+
+def deep_get(d, keys):
+    for key in keys:
+        d = d[key]
+    return d
+
+
+def group_results(results, axes_spec):
+    """Group results into an array.
+
+    Parameters
+    ----------
+    results : list of dict
+        List of results dictionaries.
+    axes_spec : list of tuple of lists
+        List of axes specifications. Each specification is a tuple (keys, values)
+        where keys is a list of strings that specify the keys to access the
+        results dictionary and values is a list of values that the key should take
+        to be indexed into the produced array.
+
+    Returns
+    -------
+    result : list of list of ... of dict
+        Array of results with shape given by the axes specification.
+    """
+
+    shape = tuple(len(axis[1]) for axis in axes_spec)
+    results_array = np.empty(shape, dtype=object)
 
     for result in results:
-        i = ns.index(result["config"]["data"]["n_train"])
-        j = seeds.index(result["config"]["seed"])
+        indices = tuple(axis[1].index(deep_get(result, axis[0])) for axis in axes_spec)
+        results_array[indices] = result
 
-        gen_risks[i, j] = result["gen_risk"]
-        test_risks[i, j] = result["test_risk"]
+    return results_array
 
-        for l, k in enumerate(cv_k):
-            cv_risks[i, j, l] = result[f"cv_{k}_risk"]
-            cv_times[i, j, l] = result[f"cv_{k}_risk_time"]
 
-        alo_exact_risks[i, j] = result["alo_exact_risk"]
-        alo_exact_times[i, j] = (
-            result["full_train_time"] + result["jac_time"] + result["alo_exact_time"]
+def extract_results(grouped_results, keys, depth=0):
+    """Extract results from a grouped array.
+
+    Recursively extract results from a grouped array.
+
+    Parameters
+    ----------
+    grouped_results : list of list of ... of dict
+        Array of results.
+    keys : list of strings
+        List of keys to access the results dictionary.
+
+    Returns
+    -------
+    results : np.ndarray
+        Array of results extracted from the dictionaries.
+    """
+
+    if isinstance(grouped_results, dict):
+        return deep_get(grouped_results, keys)
+    else:
+        results = [
+            extract_results(result, keys, depth=depth + 1) for result in grouped_results
+        ]
+        if depth == 0:
+            results = np.asarray(results)
+        return results
+
+
+def lasso_scaling_1():
+
+    results = load_results(os.path.join("lasso_scaling_1", "results"))
+
+    n_keys = ["config", "data", "n_train"]
+    seed_keys = ["config", "seed"]
+
+    ns = sorted(set(deep_get(result, n_keys) for result in results))
+    seeds = sorted(set(deep_get(result, seed_keys) for result in results))
+    cv_k = deep_get(results[0], ["config", "cv_k"])
+    alo_m = deep_get(results[0], ["config", "alo_m"])
+
+    results = group_results(results, [(n_keys, ns), (seed_keys, seeds)])
+
+    gen_risks = extract_results(results, ["gen_risk"])
+    test_risks = extract_results(results, ["test_risk"])
+
+    cv_risks = np.stack(
+        [extract_results(results, [f"cv_{k}_risk"]) for k in cv_k],
+        axis=-1,
+    )
+    cv_times = np.stack(
+        [extract_results(results, [f"cv_{k}_risk_time"]) for k in cv_k],
+        axis=-1,
+    )
+
+    alo_exact_risks = extract_results(results, ["alo_exact_risk"])
+    full_train_times = extract_results(results, ["full_train_time"])
+    jac_times = extract_results(results, ["jac_time"])
+    alo_exact_times = (
+        full_train_times + jac_times + extract_results(results, ["alo_exact_time"])
+    )
+
+    alo_bks_risks = np.stack(
+        [extract_results(results, [f"alo_{m}_bks_risk"]) for m in alo_m],
+        axis=-1,
+    )
+    alo_matvec_times = np.stack(
+        [extract_results(results, [f"alo_{m}_matvec_time"]) for m in alo_m],
+        axis=-1,
+    )
+    alo_bks_times = (
+        full_train_times[..., None]
+        + jac_times[..., None]
+        + alo_matvec_times
+        + np.stack(
+            [extract_results(results, [f"alo_{m}_bks_risk_time"]) for m in alo_m],
+            axis=-1,
         )
-
-        for l, m in enumerate(alo_m):
-            alo_bks_risks[i, j, l] = result[f"alo_{m}_bks_risk"]
-            alo_bks_times[i, j, l] = (
-                result["full_train_time"]
-                + result["jac_time"]
-                + result[f"alo_{m}_matvec_time"]
-                + result[f"alo_{m}_bks_risk_time"]
-            )
-            alo_poly_risks[i, j, l] = result[f"alo_{m}_poly_risk"]
-            alo_poly_times[i, j, l] = (
-                result["full_train_time"]
-                + result["jac_time"]
-                + result[f"alo_{m}_matvec_time"]
-                + result[f"alo_{m}_poly_risk_time"]
-            )
+    )
+    alo_poly_risks = np.stack(
+        [extract_results(results, [f"alo_{m}_poly_risk"]) for m in alo_m],
+        axis=-1,
+    )
+    alo_poly_times = (
+        full_train_times[..., None]
+        + jac_times[..., None]
+        + alo_matvec_times
+        + np.stack(
+            [extract_results(results, [f"alo_{m}_poly_risk_time"]) for m in alo_m],
+            axis=-1,
+        )
+    )
 
     for i, k in enumerate(cv_k):
         if k in [2, 10]:
