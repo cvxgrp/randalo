@@ -15,10 +15,10 @@ def load_results(results_dir):
         with open(aggregate_fn, "r") as f:
             return json.load(f)
 
-    results_files = glob.glob("run_*.json", root_dir=results_dir)
+    results_files = glob.glob(os.path.join(results_dir, "run_*.json"))
     results = []
     for results_file in results_files:
-        with open(os.path.join(results_dir, results_file), "r") as f:
+        with open(results_file, "r") as f:
             results.append(json.load(f))
 
     with open(aggregate_fn, "w") as f:
