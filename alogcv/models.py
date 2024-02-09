@@ -92,6 +92,15 @@ class SeparableRegularizerJacobian(LinearOperator):
 
         return self.X_mask @ Z
 
+    @property
+    def diag(self):
+        return torch.diag(
+            self.X_mask
+            @ torch.linalg.ldl_solve(
+                self.LD, self.pivots, self.X_mask.T * self.loss_hessian_diag[None, :]
+            )
+        )
+
 
 class LinearSeparableRegularizerJacobian(LinearOperator):
     supports_operator_matrix = True
@@ -153,15 +162,6 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
             Z = Z[..., 0]
 
         return self.X @ Z
-
-    @property
-    def diag(self):
-        return torch.diag(
-            self.X_mask
-            @ torch.linalg.ldl_solve(
-                self.LD, self.pivots, self.X_mask.T * self.loss_hessian_diag[None, :]
-            )
-        )
 
 
 class SeparableRegularizerMixin(ABC):
