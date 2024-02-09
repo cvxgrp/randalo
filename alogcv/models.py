@@ -235,12 +235,12 @@ class LassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
     @property
     def loss_hessian_diag_(self):
         self._fitted_check()
-        return torch.ones(self.X.shape[0]) / self.X.shape[0]
+        return np.ones(self.X.shape[0]) / self.X.shape[0]
 
     @property
     def reg_hessian_diag_(self):
         self._fitted_check()
-        hess = torch.zeros(self.X.shape[1])
+        hess = np.zeros(self.X.shape[1])
         hess[self.model.coef_ == 0] = float("inf")
         return hess
 
