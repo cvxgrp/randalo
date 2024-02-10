@@ -9,7 +9,7 @@ from sklearn.linear_model import Lasso
 from sklearn.model_selection import KFold
 
 from alogcv.alo import ALOExact, ALORandomized
-from alogcv.models import LinearMixin, LassoModel
+from alogcv.models import LinearMixin, LassoModel, FirstDifferenceModel
 
 
 class Timer(object):
@@ -43,6 +43,26 @@ def get_data(data_config, rng):
             lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
         )
 
+    elif data_config["src"] == "iid_normal_first-diff-sparse_awgn":
+        n_train, n_test, p, s, sigma = extract_dict_keys(
+            data_config, ["n_train", "n_test", "p", "s", "sigma"]
+        )
+        X_train = rng.normal(size=(n_train, p))
+        X_test = rng.normal(size=(n_test, p))
+
+        beta = np.zeros(p)
+        beta[:s] = rng.normal(size=s) / np.sqrt(s)
+        rng.shuffle(beta)
+        beta = np.cumsum(beta)
+
+        y_train = X_train @ beta + rng.normal(scale=sigma, size=n_train)
+        y_test = X_test @ beta + rng.normal(scale=sigma, size=n_test)
+
+        gen_risk_linear = (
+            lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
+        )
+
+
     else:
         raise ValueError(f"Unknown data source {data_config['src']}")
 
@@ -69,6 +89,12 @@ def model_lookup(config):
         p = config["data"]["p"]
         lamda = method_kwargs.pop("lamda0") / np.sqrt(p)
         return LassoModel(lamda, sklearn_lasso_kwargs=method_kwargs)
+
+    if method == "first-difference":
+        p = config["data"]["p"]
+        lamda = method_kwargs.pop("lamda0") / np.sqrt(p)
+        return FirstDifferenceModel(lamda, cvxpy_kwargs=method_kwargs)
+
 
 
 def risk_lookup(risk_name):

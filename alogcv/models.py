@@ -113,12 +113,13 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
         self.loss_hessian_diag = loss_hessian_diag
 
         self.X = X
+        mask = torch.isfinite(reg_hessian_diag)
         self.D_mask = D[mask, :]
         self.reg_hessian_diag_mask = reg_hessian_diag[mask]
 
         if torch.linalg.vector_norm(self.reg_hessian_diag_mask) <= 1e-9:
-            H_sqrt = loss_hessian_diag[:, None] * self.X
-            _, self.H_R = torch.linalg.qr(H_sqrt, mode="R")
+            H_sqrt = torch.sqrt(loss_hessian_diag)[:, None] * self.X
+            _, self.H_R = torch.linalg.qr(H_sqrt, mode="r")
         else:
             H = self.X.T @ (loss_hessian_diag[:, None] * self.X) + self.D_mask.T @ (
                 self.reg_hessian_diag_mask[:, None] * self.D_mask
@@ -126,12 +127,23 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
             self.H_R = torch.linalg.cholesky(H, upper=True)
         self.D_nmask = D[~mask, :]
 
-        M = self.D_nmask @ torch.linalg.solve_triangular(
-            self.H_R.T,
-            torch.linalg.solve_triangular(self.H_R, self.D_nmask.T, upper=True),
-            upper=False,
-        )
+        M = self.D_nmask @ self._Hinv(self.D_nmask.T)
         self.M_L = torch.linalg.cholesky(M)
+
+    def _Hinv(self, V):
+        return torch.linalg.solve_triangular(
+            self.H_R,
+            torch.linalg.solve_triangular(self.H_R.T, V, upper=False),
+            upper=True,
+        )
+
+    def _Minv(self, V):
+        return torch.linalg.solve_triangular(
+            self.M_L.T,
+            torch.linalg.solve_triangular(self.M_L, V, upper=False),
+            upper=True,
+        )
+
 
     def _matmul_impl(self, A):
         if A.ndim == 1:
@@ -140,29 +152,21 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
         else:
             need_squeeze = False
 
-        V = self.X.T @ (self.loss_hessian_diag[:, None] * A)
-        HinvV = torch.linalg.solve_triangular(
-            self.H_R.T,
-            torch.linalg.solve_triangular(self.H_R, V, upper=True),
-            upper=False,
-        )
-        DHinvV = self.D_nmask @ HinvV
-        lagrange_multiples = torch.linalg.solve_triangular(
-            self.M_L,
-            torch.linalg.solve_triangular(self.M_L.T, DHinvV, upper=True),
-            upper=False,
-        )
-
-        Z = HinvV - torch.linalg.solve_triangular(
-            self.H_R.T,
-            torch.linalg.solve_triangular(self.H_R, lagrange_multiples, upper=True),
-            upper=False,
-        )
+        # Boyd and Vandenberghe, Convex Optimization, p. 545
+        G = -self.X.T @ (self.loss_hessian_diag[:, None] * A)
+        DHinvG = self.D_nmask @ self._Hinv(G)
+        lagrange_multiples = self._Minv(-DHinvG)
+        Z = -self._Hinv(G + self.D_nmask.T @ lagrange_multiples)
 
         if need_squeeze:
             Z = Z[..., 0]
 
         return self.X @ Z
+
+    @property
+    def diag(self):
+        breakpoint()
+        return torch.diag(self @ torch.eye(self.shape[0]))
 
 
 class SeparableRegularizerMixin(ABC):
@@ -200,7 +204,7 @@ class LinearSeparableRegularizerMixin(ABC):
         pass
 
     def _compute_jac(self, device=None):
-        return SeparableRegularizerJacobian(
+        return LinearSeparableRegularizerJacobian(
             torch.tensor(self.X, device=device),
             torch.tensor(self.generate_D_from_X(self.X), device=device),
             torch.tensor(self.loss_hessian_diag_, device=device),
@@ -278,14 +282,14 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
 
                 b = cp.Variable(X.shape[1])
                 t = cp.Variable()
-                prob = Problem(
+                prob = cp.Problem(
                     cp.Minimize(
                         t**2 / (2 * X.shape[0]) + self.lamda * cp.norm(cp.diff(b), 1)
                     ),
-                    [cp.SOC(y - X @ b, t)],
+                    [cp.SOC(t, y - X @ b)],
                 )
-                prob.solve(cp.CLARABEL, **cvxpy_kwargs)
-                s.coef_ = torch.Tensor(b.value)
+                prob.solve(cp.CLARABEL, **self.cvxpy_kwargs)
+                s.coef_ = b.value
 
             def predict(s, x):
                 return x @ s.coef_
@@ -295,13 +299,13 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
     @property
     def loss_hessian_diag_(self):
         self._fitted_check()
-        return torch.ones(self.X.shape[0]) / self.X.shape[0]
+        return np.ones(self.X.shape[0]) / self.X.shape[0]
 
     @property
     def reg_hessian_diag_(self):
         self._fitted_check()
-        hess = torch.zeros(self.X.shape[1])
-        hess[torch.diff(self.model.coef_) <= 1e-9] = float("inf")
+        hess = np.zeros(self.X.shape[1] - 1)
+        hess[np.diff(self.model.coef_) <= 1e-9] = float("inf")
         return hess
 
     @staticmethod
@@ -309,4 +313,4 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
         return (y - y_hat) ** 2 / 2
 
     def generate_D_from_X(self, X):
-        return torch.diff(torch.eye(X.shape[1]))
+        return np.diff(np.eye(X.shape[1]), axis=0)
