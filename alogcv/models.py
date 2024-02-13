@@ -165,7 +165,6 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
 
     @property
     def diag(self):
-        breakpoint()
         return torch.diag(self @ torch.eye(self.shape[0]))
 
 
@@ -280,16 +279,16 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
             def fit(s, X, y):
                 import cvxpy as cp
 
-                b = cp.Variable(X.shape[1])
+                w = cp.Variable(X.shape[1])
                 t = cp.Variable()
                 prob = cp.Problem(
                     cp.Minimize(
-                        t**2 / (2 * X.shape[0]) + self.lamda * cp.norm(cp.diff(b), 1)
+                        t**2 / (2 * X.shape[0]) + self.lamda * cp.norm(cp.diff(w), 1)
                     ),
-                    [cp.SOC(t, y - X @ b)],
+                    [cp.SOC(t, y - X @ w)],
                 )
                 prob.solve(cp.CLARABEL, **self.cvxpy_kwargs)
-                s.coef_ = b.value
+                s.coef_ = w.value
 
             def predict(s, x):
                 return x @ s.coef_
@@ -305,7 +304,7 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
     def reg_hessian_diag_(self):
         self._fitted_check()
         hess = np.zeros(self.X.shape[1] - 1)
-        hess[np.diff(self.model.coef_) <= 1e-9] = float("inf")
+        hess[np.abs(np.diff(self.model.coef_)) <= 1e-6] = float("inf")
         return hess
 
     @staticmethod
