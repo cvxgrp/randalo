@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=16GB
 #SBATCH --partition=candes
-#SBATCH --array=1-8
+#SBATCH --array=1-630
 
 BASE_DIR=$HOME/alo/benchmarking/first_diff_scaling_1
 CONFIGS_DIR=$BASE_DIR/configs
