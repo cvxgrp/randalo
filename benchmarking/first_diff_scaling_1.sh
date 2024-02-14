@@ -21,5 +21,5 @@ ml python/3.9.0
 ml py-pytorch/2.0.0_py39
 . $HOME/alo/.venv/bin/activate
 
-python run.py $FILE $DEST_FILE
+python -u run.py $FILE $DEST_FILE
 
