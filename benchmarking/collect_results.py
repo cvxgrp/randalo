@@ -298,9 +298,97 @@ def lasso_scaling_1():
     plt.tight_layout()
     plt.show()
 
+def first_diff_scaling_1():
+
+    results = load_results(os.path.join("first_diff_scaling_1", "results"))
+
+    axes_keys = [
+        ["config", "data", "n_train"],
+        ["config", "method_kwargs", "lamda0"],
+        ["config", "seed"],
+    ]
+
+    (
+        axes,
+        gen_risks,
+        test_risks,
+        cv_k,
+        cv_risks,
+        cv_times,
+        full_train_times,
+        alo_exact_risks,
+        alo_exact_times,
+        alo_m,
+        alo_bks_risks,
+        alo_bks_times,
+        alo_poly_risks,
+        alo_poly_times,
+    ) = extract_all_results(results, axes_keys)
+    ns, lamda0s, seeds = axes
+
+    k = 5
+    m = 100
+    lamda0 = 1.0
+    ik = cv_k.index(k)
+    im = alo_m.index(m)
+    ilamda0 = lamda0s.index(lamda0)
+
+    test_rel = relative_error(test_risks, gen_risks)[:, ilamda0, :]
+    cv_rel = relative_error(cv_risks[..., ik], gen_risks)[:, ilamda0, :]
+    alo_exact_rel = relative_error(alo_exact_risks, gen_risks)[:, ilamda0, :]
+    alo_bks_rel = relative_error(alo_bks_risks[..., im], gen_risks)[:, ilamda0, :]
+    alo_poly_rel = relative_error(alo_poly_risks[..., im], gen_risks)[:, ilamda0, :]
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+
+    normalize_factor = 1 / np.median(cv_rel, axis=1)[:, None]
+    grouped_boxplot(
+        [
+            cv_rel * normalize_factor,
+            alo_exact_rel * normalize_factor,
+            alo_bks_rel * normalize_factor,
+            alo_poly_rel * normalize_factor,
+        ],
+        [f"n={n}" for n in ns],
+        [f"cv_{k}", "alo_exact", f"alo_{m}_bks", f"alo_{m}_poly"],
+        ax=axes[0],
+    )
+    axes[0].axhline(1, color="black", linestyle="--")
+    axes[0].set_title(f"First Difference Error Scaling for $\\lambda_0={lamda0}$")
+    axes[0].set_ylabel("Relative Estimation Error (normalized by CV median)")
+
+    # normalize_factor = 1 / np.median(cv_times[:, ilamda0, :, ik], axis=1)[:, None]
+    normalize_factor = 1 / np.median(full_train_times[:, ilamda0, :], axis=1)[:, None]
+    i = np.argmax(alo_bks_times[-1, ilamda0, :, im])
+    print(alo_bks_times[-1, ilamda0, i, im] * normalize_factor[-1, 0])
+    print(full_train_times[-1, ilamda0, i] * normalize_factor[-1, 0])
+
+    grouped_boxplot(
+        [
+            cv_times[:, ilamda0, :, ik] * normalize_factor,
+            alo_exact_times[:, ilamda0, :] * normalize_factor,
+            alo_bks_times[:, ilamda0, :, im] * normalize_factor,
+            alo_poly_times[:, ilamda0, :, im] * normalize_factor,
+        ],
+        [f"n={n}" for n in ns],
+        [f"cv_{k}", "alo_exact", f"alo_{m}_bks", f"alo_{m}_poly"],
+        ax=axes[1],
+    )
+    axes[1].axhline(1, color="black", linestyle="--")
+    solve_time = np.median(full_train_times[-1, ilamda0, :] * normalize_factor[-1, :])
+    # axes[1].axhline(solve_time, color="black", linestyle=":")
+    axes[1].set_title(f"First Difference Time Scaling for $\\lambda_0={lamda0}$")
+    axes[1].set_ylabel("Time (normalized by median model training)")
+    axes[1].set_yscale("log")
+
+    plt.tight_layout()
+    plt.show()
+
+
 
 collect_mapping = {
     "lasso_scaling_1": lasso_scaling_1,
+    "first_diff_scaling_1": first_diff_scaling_1,
 }
 
 
