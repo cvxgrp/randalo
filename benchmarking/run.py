@@ -21,6 +21,23 @@ class Timer(object):
         self.toc = time.monotonic()
         self.elapsed = self.toc - self.tic
 
+    @property
+    def running(self):
+        return time.monotonic() - self.tic
+
+
+GLOBAL_TIMER = Timer().__enter__()
+
+
+def seconds_to_str(seconds):
+    minutes, seconds = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{int(hours):02d}:{int(minutes):02d}:{seconds:06.3f}"
+
+
+def log(message, *args, **kwargs):
+    print(f"[{seconds_to_str(GLOBAL_TIMER.running)}] {message}", *args, **kwargs)
+
 
 def extract_dict_keys(d, keys):
     return tuple(d[k] for k in keys)
@@ -131,7 +148,7 @@ if __name__ == "__main__":
     parser.add_argument("results_file", help="path to the results file")
     args = parser.parse_args()
 
-    print(f"Running experiment with config file {args.config_file}")
+    log(f"Running experiment with config file {args.config_file}")
     with open(args.config_file, "r") as f:
         config = json.load(f)
     results = {
@@ -146,7 +163,7 @@ if __name__ == "__main__":
     gen = torch.Generator()
     gen.manual_seed(config["seed"])
 
-    print("Generating data...")
+    log("Generating data...")
     X_train, y_train, gen_risk, test_risk = get_data(config["data"], rng)
     n, p = X_train.shape
 
@@ -154,7 +171,7 @@ if __name__ == "__main__":
     model = model_lookup(config)
     risk_fun = risk_lookup(config["risk"])
 
-    print("Fitting model...")
+    log("Fitting model...")
     with Timer() as timer:
         model.fit(X_train, y_train)
     results["full_train_time"] = timer.elapsed
@@ -169,14 +186,14 @@ if __name__ == "__main__":
 
     # Perform cross-validation
     for k in config["cv_k"]:
-        print(f"Performing {k}-fold cross-validation...")
+        log(f"Performing {k}-fold cross-validation...")
         with Timer() as timer:
             results[f"cv_{k}_risk"] = cross_val_risk(
                 model, X_train, y_train, risk_fun, k=k
             )
         results[f"cv_{k}_risk_time"] = timer.elapsed
 
-    print("Precomputing ALO Jacobian...")
+    log("Precomputing ALO Jacobian...")
     device = torch.device(config["device"])
     with Timer() as timer:
         model.jac(device)
@@ -186,7 +203,7 @@ if __name__ == "__main__":
     y_train_torch = torch.tensor(y_train, device=device)
     y_hat_torch = torch.tensor(model.predict(X_train), device=device)
 
-    print("Performing exact ALO...")
+    log("Performing exact ALO...")
     with Timer() as timer:
         diag_jac = model.jac(device).diag
         alo_exact = ALOExact(
@@ -201,7 +218,7 @@ if __name__ == "__main__":
     alo = None
     running_matvec_time = 0
     for m in sorted(config["alo_m"]):
-        print(f"Performing randomized ALO up to {m} matvecs...")
+        log(f"Performing randomized ALO up to {m} matvecs...")
         with Timer() as timer:
             if alo is None:
                 alo = ALORandomized(
