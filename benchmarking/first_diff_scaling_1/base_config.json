@@ -12,7 +12,7 @@
     },
     "method": "first-difference",
     "method_kwargs": {
-        "lamda0": 0.01
+        "lamda0": 1.0
     },
     "risk": "squared_error",
     "cv_k": [2, 5, 10],

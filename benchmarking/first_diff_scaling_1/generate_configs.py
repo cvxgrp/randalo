@@ -17,7 +17,7 @@ for scale in [10, 20, 50, 100]:
     config["data"]["p"] = p = p0 * scale
     config["data"]["s"] = s0 * scale
 
-    for seed in range(5):
+    for seed in range(2):
         config["seed"] = seed
 
         id = hashlib.sha256(json.dumps(config).encode()).hexdigest()[:8]
