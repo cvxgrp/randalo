@@ -51,7 +51,8 @@ def get_data(data_config, rng):
         X_test = rng.normal(size=(n_test, p))
 
         beta = np.zeros(p)
-        beta[:s] = rng.normal(size=s) / np.sqrt(s)
+        # normalize such that after cumsum, beta has unit norm in expectation
+        beta[:s] = rng.normal(size=s) * np.sqrt(2 / s / p)
         rng.shuffle(beta)
         beta = np.cumsum(beta)
 
@@ -61,7 +62,6 @@ def get_data(data_config, rng):
         gen_risk_linear = (
             lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
         )
-
 
     else:
         raise ValueError(f"Unknown data source {data_config['src']}")
@@ -92,9 +92,8 @@ def model_lookup(config):
 
     if method == "first-difference":
         p = config["data"]["p"]
-        lamda = method_kwargs.pop("lamda0") / np.sqrt(p)
+        lamda = method_kwargs.pop("lamda0")
         return FirstDifferenceModel(lamda, cvxpy_kwargs=method_kwargs)
-
 
 
 def risk_lookup(risk_name):

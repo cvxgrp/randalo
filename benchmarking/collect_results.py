@@ -277,10 +277,6 @@ def lasso_scaling_1():
 
     # normalize_factor = 1 / np.median(cv_times[:, ilamda0, :, ik], axis=1)[:, None]
     normalize_factor = 1 / np.median(full_train_times[:, ilamda0, :], axis=1)[:, None]
-    i = np.argmax(alo_bks_times[-1, ilamda0, :, im])
-    print(alo_bks_times[-1, ilamda0, i, im] * normalize_factor[-1, 0])
-    print(full_train_times[-1, ilamda0, i] * normalize_factor[-1, 0])
-
     grouped_boxplot(
         [
             cv_times[:, ilamda0, :, ik] * normalize_factor,
