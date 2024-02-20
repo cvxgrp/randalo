@@ -1,0 +1,23 @@
+{
+    "id": "test",
+    "seed": 0,
+    "device": "cpu",
+    "data": {
+        "src": "iid_normal_logistic_sparse",
+        "n_train": 2000,
+        "n_test": 10000,
+        "p": 2000,
+        "s": 200,
+        "rho": 5.0
+    },
+    "method": "logistic",
+    "method_kwargs": {
+        "lamda0": 100.0,
+        "penalty": "l1",
+        "fit_intercept": false,
+        "solver": "liblinear"
+    },
+    "risk": "zero_one",
+    "cv_k": [2, 5],
+    "alo_m": [] 
+}

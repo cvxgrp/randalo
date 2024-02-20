@@ -4,6 +4,7 @@ import cvxpy as cp
 import numpy as np
 import linops as lo
 import torch
+from torch import autograd
 
 import alogcv.solver
 
@@ -16,6 +17,38 @@ def robust_poly_fit(x, y, order: int):
     if not (prob.solve(cp.CLARABEL) < np.inf):
         return [np.nan for _ in range(order + 1)], np.inf
     return beta.value, r.value
+
+
+def compute_derivatives(loss_fun, y, y_hat):
+
+    # detach and clone to avoid memory leaks
+    y = y.detach().clone().requires_grad_(True)
+    y_hat = y_hat.detach().clone().requires_grad_(True)
+    n = y.shape[0]
+
+    # compute first and second derivatives of loss function
+    # we obtain the vector derivatives by summing and then taking the gradient
+    loss = loss_fun(y, y_hat).sum()
+    # keep the graph for computing the second derivatives
+    dloss_dy_hat, *_ = autograd.grad(loss, y_hat, create_graph=True)
+    dloss_dy_hat_sum = dloss_dy_hat.sum()
+
+    d2loss_dboth, d2loss_dy_hat2 = autograd.grad(
+        dloss_dy_hat_sum, [y, y_hat], allow_unused=True
+    )
+    if d2loss_dboth is None:
+        d2loss_dboth = torch.zeros_like(y)
+    if d2loss_dy_hat2 is None:
+        d2loss_dy_hat2 = torch.zeros_like(y_hat)
+
+    # free GPU memory used by autograd and return
+    return (
+        y.detach(),
+        y_hat.detach(),
+        dloss_dy_hat.detach(),
+        d2loss_dboth.detach(),
+        d2loss_dy_hat2.detach(),
+    )
 
 
 def lasso(X, y, lamda):

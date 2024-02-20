@@ -3,10 +3,12 @@ from abc import ABC, abstractmethod, abstractstaticmethod
 import numpy as np
 import torch
 
-from sklearn.linear_model import Lasso
+from sklearn.linear_model import Lasso, LogisticRegression
 from sklearn.exceptions import NotFittedError
 
 from linops import LinearOperator
+
+from . import utils
 
 
 class ALOModel(ABC):
@@ -19,10 +21,24 @@ class ALOModel(ABC):
         self.y = y
         self.model = self.get_new_model()
         self.model.fit(X, y)
+        self.y_hat = self.model.predict(X)
+
+        # Store data and compute derivatives using torch
+        self._X = torch.tensor(X)
+        (
+            self._y,
+            self._y_hat,
+            self._dloss_dy_hat,
+            self._d2loss_dboth,
+            self._d2loss_dy_hat2,
+        ) = utils.compute_derivatives(
+            self.loss_fun, torch.tensor(y), torch.tensor(self.y_hat)
+        )
 
         self._jac = None
         self.fitted = True
         self.needs_compute_jac = True
+        return self
 
     def predict(self, X):
         self._fitted_check()
@@ -33,6 +49,14 @@ class ALOModel(ABC):
         if self.needs_compute_jac or (
             self._jac is not None and self._jac.device != device
         ):
+            if device is None:
+                device = self._X.device
+            self._X = self._X.to(device)
+            self._y = self._y.to(device)
+            self._y_hat = self._y_hat.to(device)
+            self._dloss_dy_hat = self._dloss_dy_hat.to(device)
+            self._d2loss_dboth = self._d2loss_dboth.to(device)
+            self._d2loss_dy_hat2 = self._d2loss_dy_hat2.to(device)
             self._jac = self._compute_jac(device=device)
             self.needs_compute_jac = False
         return self._jac
@@ -64,11 +88,12 @@ class LinearMixin(ABC):
 class SeparableRegularizerJacobian(LinearOperator):
     supports_operator_matrix = True
 
-    def __init__(self, X, loss_hessian_diag, reg_hessian_diag):
+    def __init__(self, X, loss_hessian_diag, loss_dy_dy_hat_diag, reg_hessian_diag):
         self._shape = (X.shape[0], X.shape[0])
         self.device = X.device
         self.dtype = X.dtype
         self.loss_hessian_diag = loss_hessian_diag
+        self.loss_dy_dy_hat_diag_ = loss_dy_dy_hat_diag
 
         mask = torch.isfinite(reg_hessian_diag)
         self.X_mask = X[:, mask]
@@ -84,7 +109,7 @@ class SeparableRegularizerJacobian(LinearOperator):
         else:
             need_squeeze = False
 
-        A = self.loss_hessian_diag[:, None] * A
+        A = -self.loss_dy_dy_hat_diag_[:, None] * A
 
         Z = torch.linalg.ldl_solve(self.LD, self.pivots, self.X_mask.T @ A)
 
@@ -96,9 +121,9 @@ class SeparableRegularizerJacobian(LinearOperator):
     @property
     def diag(self):
         return torch.diag(
-            self.X_mask
+            -self.X_mask
             @ torch.linalg.ldl_solve(
-                self.LD, self.pivots, self.X_mask.T * self.loss_hessian_diag[None, :]
+                self.LD, self.pivots, self.X_mask.T * self.loss_dy_dy_hat_diag_[None, :]
             )
         )
 
@@ -144,7 +169,6 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
             upper=True,
         )
 
-
     def _matmul_impl(self, A):
         if A.ndim == 1:
             A = A[:, None]
@@ -171,19 +195,16 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
 class SeparableRegularizerMixin(ABC):
     @property
     @abstractmethod
-    def loss_hessian_diag_(self):
-        pass
-
-    @property
-    @abstractmethod
     def reg_hessian_diag_(self):
         pass
 
     def _compute_jac(self, device=None):
+
         return SeparableRegularizerJacobian(
-            torch.tensor(self.X, device=device),
-            torch.tensor(self.loss_hessian_diag_, device=device),
-            torch.tensor(self.reg_hessian_diag_, device=device),
+            self._X,
+            self._d2loss_dy_hat2,
+            self._d2loss_dboth,
+            self.reg_hessian_diag_.to(device),
         )
 
 
@@ -216,7 +237,7 @@ class LassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
 
     The optimization objective is given by
     ```
-    1 / (2 * n)) * ||y - Xw||^2_2 + lamda * ||w||_1
+    1 / (2 * n) * ||y - Xw||^2_2 + lamda * ||w||_1
     ```
 
     """
@@ -237,16 +258,11 @@ class LassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
         return Lasso(**kwargs)
 
     @property
-    def loss_hessian_diag_(self):
-        self._fitted_check()
-        return np.ones(self.X.shape[0]) / self.X.shape[0]
-
-    @property
     def reg_hessian_diag_(self):
         self._fitted_check()
         hess = np.zeros(self.X.shape[1])
         hess[self.model.coef_ == 0] = float("inf")
-        return hess
+        return torch.tensor(hess)
 
     @staticmethod
     def loss_fun(y, y_hat):
@@ -313,3 +329,55 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
 
     def generate_D_from_X(self, X):
         return np.diff(np.eye(X.shape[1]), axis=0)
+
+
+class DecisionFunctionModelWrapper(LinearMixin):
+    def __init__(self, model):
+        self.model = model
+
+    def fit(self, X, y):
+        self.model.fit(X, y)
+        return self
+
+    def predict(self, X):
+        return self.model.decision_function(X)
+
+    @property
+    def coef_(self):
+        return self.model.coef_.squeeze()
+
+
+class LogisticModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
+    """Logistic model for ALO computation
+
+    The optimization objective is given by
+    ```
+    1 / n * sum_i log(1 + exp(-y_i * x_i^T w)) + lamda * ||w||_1
+    ```
+
+    """
+
+    def __init__(
+        self,
+        lamda,
+        sklearn_logistic_kwargs={},
+    ):
+        super().__init__()
+        self.lamda = lamda
+        self.sklearn_logistic_kwargs = sklearn_logistic_kwargs
+
+    def get_new_model(self):
+        kwargs = self.sklearn_logistic_kwargs.copy()
+        kwargs["C"] = 1 / self.lamda
+        return DecisionFunctionModelWrapper(LogisticRegression(**kwargs))
+
+    @property
+    def reg_hessian_diag_(self):
+        self._fitted_check()
+        hess = np.zeros(self.X.shape[1])
+        hess[self.coef_ == 0] = float("inf")
+        return torch.tensor(hess)
+
+    @staticmethod
+    def loss_fun(y, y_hat):
+        return torch.log(1 + torch.exp(-y * y_hat))

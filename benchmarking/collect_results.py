@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import glob
 import json
 import os
@@ -93,6 +94,26 @@ def extract_results(grouped_results, keys, depth=0):
         return results
 
 
+@dataclass
+class ResultsCollection(object):
+    axes: list
+    gen_risks: np.ndarray
+    test_risks: np.ndarray
+    cv_k: list
+    cv_risks: np.ndarray
+    cv_times: np.ndarray
+    full_train_times: np.ndarray
+    jac_times: np.ndarray
+    alo_exact_risks: np.ndarray
+    alo_exact_times: np.ndarray
+    alo_m: list
+    alo_matvec_times: np.ndarray
+    alo_bks_risks: np.ndarray
+    alo_bks_times: np.ndarray
+    alo_poly_risks: np.ndarray
+    alo_poly_times: np.ndarray
+
+
 def extract_all_results(results, axes_keys):
 
     cv_k = deep_get(results[0], ["config", "cv_k"])
@@ -154,21 +175,23 @@ def extract_all_results(results, axes_keys):
         )
     )
 
-    return (
-        axes,
-        gen_risks,
-        test_risks,
-        cv_k,
-        cv_risks,
-        cv_times,
-        full_train_times,
-        alo_exact_risks,
-        alo_exact_times,
-        alo_m,
-        alo_bks_risks,
-        alo_bks_times,
-        alo_poly_risks,
-        alo_poly_times,
+    return ResultsCollection(
+        axes=axes,
+        gen_risks=gen_risks,
+        test_risks=test_risks,
+        cv_k=cv_k,
+        cv_risks=cv_risks,
+        cv_times=cv_times,
+        full_train_times=full_train_times,
+        jac_times=jac_times,
+        alo_exact_risks=alo_exact_risks,
+        alo_exact_times=alo_exact_times,
+        alo_m=alo_m,
+        alo_matvec_times=alo_matvec_times,
+        alo_bks_risks=alo_bks_risks,
+        alo_bks_times=alo_bks_times,
+        alo_poly_risks=alo_poly_risks,
+        alo_poly_times=alo_poly_times,
     )
 
 
@@ -216,6 +239,9 @@ def grouped_boxplot(data, x_labels, group_labels, ax=None, **kwargs):
     ax.legend(artists, group_labels)
 
 
+def scaling_plots(results, ks, ms, )
+
+
 def lasso_scaling_1():
 
     results = load_results(os.path.join("lasso_scaling_1", "results"))
@@ -226,22 +252,7 @@ def lasso_scaling_1():
         ["config", "seed"],
     ]
 
-    (
-        axes,
-        gen_risks,
-        test_risks,
-        cv_k,
-        cv_risks,
-        cv_times,
-        full_train_times,
-        alo_exact_risks,
-        alo_exact_times,
-        alo_m,
-        alo_bks_risks,
-        alo_bks_times,
-        alo_poly_risks,
-        alo_poly_times,
-    ) = extract_all_results(results, axes_keys)
+    results = extract_all_results(results, axes_keys)
     ns, lamda0s, seeds = axes
 
     k = 5
@@ -298,6 +309,7 @@ def lasso_scaling_1():
     plt.tight_layout()
     plt.show()
 
+
 def first_diff_scaling_1():
 
     results = load_results(os.path.join("first_diff_scaling_1", "results"))
@@ -327,8 +339,8 @@ def first_diff_scaling_1():
     ns, lamda0s, seeds = axes
 
     k = 5
-    m = 100
-    lamda0 = 1.0
+    m = 300
+    lamda0 = 10.0
     ik = cv_k.index(k)
     im = alo_m.index(m)
     ilamda0 = lamda0s.index(lamda0)
@@ -375,7 +387,8 @@ def first_diff_scaling_1():
         ax=axes[1],
     )
     axes[1].axhline(1, color="black", linestyle="--")
-    solve_time = np.median(full_train_times[-1, ilamda0, :] * normalize_factor[-1, :])
+    axes[1].axhline((k - 1) ** 2 / k, color="black", linestyle=":")
+    # solve_time = np.median(full_train_times[-1, ilamda0, :] * normalize_factor[-1, :])
     # axes[1].axhline(solve_time, color="black", linestyle=":")
     axes[1].set_title(f"First Difference Time Scaling for $\\lambda_0={lamda0}$")
     axes[1].set_ylabel("Time (normalized by median model training)")
@@ -383,7 +396,6 @@ def first_diff_scaling_1():
 
     plt.tight_layout()
     plt.show()
-
 
 
 collect_mapping = {

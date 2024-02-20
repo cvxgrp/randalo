@@ -9,7 +9,7 @@ from sklearn.linear_model import Lasso
 from sklearn.model_selection import KFold
 
 from alogcv.alo import ALOExact, ALORandomized
-from alogcv.models import LinearMixin, LassoModel, FirstDifferenceModel
+from alogcv.models import LinearMixin, LassoModel, FirstDifferenceModel, LogisticModel
 
 
 class Timer(object):
@@ -80,11 +80,27 @@ def get_data(data_config, rng):
             lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
         )
 
+    elif data_config["src"] == "iid_normal_logistic_sparse":
+        n_train, n_test, p, s, rho = extract_dict_keys(
+            data_config, ["n_train", "n_test", "p", "s", "rho"]
+        )
+        X_train = rng.normal(size=(n_train, p))
+        X_test = rng.normal(size=(n_test, p))
+        beta = np.zeros(p)
+        beta[:s] = rng.normal(size=s) / np.sqrt(s)
+
+        prob = 1 / (1 + np.exp(-X_train @ beta * rho))
+        y_train = (rng.uniform(size=n_train) < prob).astype(float) * 2 - 1
+        prob = 1 / (1 + np.exp(-X_test @ beta * rho))
+        y_test = (rng.uniform(size=n_test) < prob).astype(float) * 2 - 1
+
+        gen_risk_linear = None
+
     else:
         raise ValueError(f"Unknown data source {data_config['src']}")
 
     def gen_risk(model):
-        if isinstance(model, LinearMixin):
+        if isinstance(model, LinearMixin) and callable(gen_risk_linear):
             beta_hat = model.coef_
             return gen_risk_linear(beta_hat)
         else:
@@ -108,15 +124,24 @@ def model_lookup(config):
         return LassoModel(lamda, sklearn_lasso_kwargs=method_kwargs)
 
     if method == "first-difference":
-        p = config["data"]["p"]
         lamda = method_kwargs.pop("lamda0")
         return FirstDifferenceModel(lamda, cvxpy_kwargs=method_kwargs)
+
+    if method == "logistic":
+        p = config["data"]["p"]
+        if method_kwargs["penalty"] == "l1":
+            lamda = method_kwargs.pop("lamda0") / np.sqrt(p)
+        elif method_kwargs["penalty"] == "l2":
+            lamda = method_kwargs.pop("lamda0")
+        return LogisticModel(lamda, sklearn_logistic_kwargs=method_kwargs)
 
 
 def risk_lookup(risk_name):
 
     if risk_name == "squared_error":
         risk_fun = lambda y, y_hat: (y - y_hat) ** 2 / 2
+    elif risk_name == "zero_one":
+        risk_fun = lambda y, y_hat: y * y_hat <= 0
     else:
         raise ValueError(f"Unknown risk function {risk_name}")
 
@@ -175,6 +200,7 @@ if __name__ == "__main__":
     with Timer() as timer:
         model.fit(X_train, y_train)
     results["full_train_time"] = timer.elapsed
+    results["train_risk"] = np.mean(risk_fun(y_train, model.predict(X_train)))
 
     with Timer() as timer:
         results["gen_risk"] = gen_risk(model)

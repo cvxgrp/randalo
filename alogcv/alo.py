@@ -4,7 +4,7 @@ from typing import Callable, Optional
 import numpy as np
 
 import torch
-from torch import autograd, Tensor
+from torch import Tensor
 
 import linops as lo
 from linops import LinearOperator
@@ -33,35 +33,16 @@ class ALOBase(ABC):
         """
 
         self._loss_fun = loss_fun
+        self.n = y.shape[0]
+        self._device = y.device
 
-        # detach and clone to avoid memory leaks
-        self._y = y.detach().clone().requires_grad_(True)
-        self._y_hat = y_hat.detach().clone().requires_grad_(True)
-        self.n = self._y.shape[0]
-
-        self._device = self._y.device
-
-        # compute first and second derivatives of loss function
-        # we obtain the vector derivatives by summing and then taking the gradient
-        loss = loss_fun(self._y, self._y_hat).sum()
-        # keep the graph for computing the second derivatives
-        self._dloss_dy_hat, *_ = autograd.grad(loss, self._y_hat, create_graph=True)
-        dloss_dy_hat_sum = self._dloss_dy_hat.sum()
-
-        self._d2loss_dboth, self._d2loss_dy_hat2 = autograd.grad(
-            dloss_dy_hat_sum, [self._y, self._y_hat], allow_unused=True
-        )
-        if self._d2loss_dboth is None:
-            self._d2loss_dboth = torch.zeros_like(self._y)
-        if self._d2loss_dy_hat2 is None:
-            self._d2loss_dy_hat2 = torch.zeros_like(self._y_hat)
-
-        # free GPU memory used by autograd
-        self._y = self._y.detach()
-        self._y_hat = self._y_hat.detach()
-        self._dloss_dy_hat = self._dloss_dy_hat.detach()
-        self._d2loss_dboth = self._d2loss_dboth.detach()
-        self._d2loss_dy_hat2 = self._d2loss_dy_hat2.detach()
+        (
+            self._y,
+            self._y_hat,
+            self._dloss_dy_hat,
+            self._d2loss_dboth,
+            self._d2loss_dy_hat2,
+        ) = utils.compute_derivatives(loss_fun, y, y_hat)
 
         # precompute some quantities for working with generic form
         # a = dloss_dy_hat
