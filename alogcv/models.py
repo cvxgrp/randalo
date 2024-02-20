@@ -299,9 +299,8 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
                 t = cp.Variable()
                 prob = cp.Problem(
                     cp.Minimize(
-                        t**2 / (2 * X.shape[0]) + self.lamda * cp.norm(cp.diff(w), 1)
+                        1 / (2 * X.shape[0]) * cp.sum_squares(y - X @ w) + self.lamda * cp.norm(cp.diff(w), 1)
                     ),
-                    [cp.SOC(t, y - X @ w)],
                 )
                 prob.solve(cp.CLARABEL, **self.cvxpy_kwargs)
                 s.coef_ = w.value
