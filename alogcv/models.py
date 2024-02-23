@@ -131,10 +131,11 @@ class SeparableRegularizerJacobian(LinearOperator):
 class LinearSeparableRegularizerJacobian(LinearOperator):
     supports_operator_matrix = True
 
-    def __init__(self, X, D, loss_hessian_diag, reg_hessian_diag):
+    def __init__(self, X, d2loss_dboth, D, loss_hessian_diag, reg_hessian_diag):
         self._shape = (X.shape[0], X.shape[0])
         self.device = X.device
         self.dtype = X.dtype
+        self.d2loss_dboth = d2loss_dboth
         self.loss_hessian_diag = loss_hessian_diag
 
         self.X = X
@@ -177,7 +178,7 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
             need_squeeze = False
 
         # Boyd and Vandenberghe, Convex Optimization, p. 545
-        G = -self.X.T @ (self.loss_hessian_diag[:, None] * A)
+        G = -self.X.T @ (self.d2loss_dboth[:, None] * A)
         DHinvG = self.D_nmask @ self._Hinv(G)
         lagrange_multiples = self._Minv(-DHinvG)
         Z = -self._Hinv(G + self.D_nmask.T @ lagrange_multiples)
@@ -225,10 +226,11 @@ class LinearSeparableRegularizerMixin(ABC):
 
     def _compute_jac(self, device=None):
         return LinearSeparableRegularizerJacobian(
-            torch.tensor(self.X, device=device),
-            torch.tensor(self.generate_D_from_X(self.X), device=device),
-            torch.tensor(self.loss_hessian_diag_, device=device),
-            torch.tensor(self.reg_hessian_diag_, device=device),
+            self._X,
+            self._d2loss_dy_hat2,
+            self.generate_D_from_X(self.X),
+            self._d2loss_dboth,
+            self.reg_hessian_diag_.to(device),
         )
 
 
@@ -311,23 +313,18 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
         return C()
 
     @property
-    def loss_hessian_diag_(self):
-        self._fitted_check()
-        return np.ones(self.X.shape[0]) / self.X.shape[0]
-
-    @property
     def reg_hessian_diag_(self):
         self._fitted_check()
         hess = np.zeros(self.X.shape[1] - 1)
         hess[np.abs(np.diff(self.model.coef_)) <= 1e-6] = float("inf")
-        return hess
+        return torch.tensor(hess)
 
     @staticmethod
     def loss_fun(y, y_hat):
         return (y - y_hat) ** 2 / 2
 
     def generate_D_from_X(self, X):
-        return np.diff(np.eye(X.shape[1]), axis=0)
+        return torch.diff(torch.eye(X.shape[1]), axis=0)
 
 
 class DecisionFunctionModelWrapper(LinearMixin):
