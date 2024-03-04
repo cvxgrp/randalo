@@ -80,6 +80,24 @@ def get_data(data_config, rng):
             lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
         )
 
+    elif data_config["src"] == "varying_norm_sparse_awgn":
+        n_train, n_test, p, s, sigma = extract_dict_keys(
+            data_config, ["n_train", "n_test", "p", "s", "sigma"]
+        )
+        X_train = (rng.exponential(size=n_train) + 0.005)[:, None] * rng.normal(size=(n_train, p))
+        X_test = (rng.exponential(size=n_test) + 0.005)[:, None] * rng.normal(size=(n_test, p))
+
+        beta = np.zeros(p)
+        beta[:s] = rng.normal(size=s) / np.sqrt(s)
+
+        y_train = X_train @ beta + rng.normal(scale=sigma, size=n_train)
+        y_test = X_test @ beta + rng.normal(scale=sigma, size=n_test)
+
+        gen_risk_linear = (
+            lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
+        )
+
+
     elif data_config["src"] == "iid_normal_logistic_sparse":
         n_train, n_test, p, s, rho = extract_dict_keys(
             data_config, ["n_train", "n_test", "p", "s", "rho"]
