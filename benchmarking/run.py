@@ -8,7 +8,7 @@ import torch
 from sklearn.linear_model import Lasso
 from sklearn.model_selection import KFold
 
-from alogcv.alo import ALOExact, ALORandomized
+from alogcv.alo import ALOExact, ALORandomized, GCV
 from alogcv.models import LinearMixin, LassoModel, FirstDifferenceModel, LogisticModel
 
 
@@ -84,8 +84,22 @@ def get_data(data_config, rng):
         n_train, n_test, p, s, sigma = extract_dict_keys(
             data_config, ["n_train", "n_test", "p", "s", "sigma"]
         )
-        X_train = (rng.exponential(size=n_train) + 0.005)[:, None] * rng.normal(size=(n_train, p))
-        X_test = (rng.exponential(size=n_test) + 0.005)[:, None] * rng.normal(size=(n_test, p))
+
+        # scale by offset exponential chosen to have unit second (non-central) moment
+        rate = 2
+        offset = (
+            np.sqrt(1 - 1 / rate**2) - 1 / rate
+        )  # for rate = 2, this is (sqrt(3) - 1) / 2
+        assert offset > 0
+
+        X_train = (
+            rng.normal(size=(n_train, p))
+            * (offset + rng.exponential(scale=1 / rate, size=n_train))[:, None]
+        )
+        X_test = (
+            rng.normal(size=(n_test, p))
+            * (offset + rng.exponential(scale=1 / rate, size=n_test))[:, None]
+        )
 
         beta = np.zeros(p)
         beta[:s] = rng.normal(size=s) / np.sqrt(s)
@@ -96,7 +110,6 @@ def get_data(data_config, rng):
         gen_risk_linear = (
             lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
         )
-
 
     elif data_config["src"] == "iid_normal_logistic_sparse":
         n_train, n_test, p, s, rho = extract_dict_keys(
@@ -285,6 +298,22 @@ if __name__ == "__main__":
         with Timer() as timer:
             results[f"alo_{m}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / n
         results[f"alo_{m}_poly_risk_time"] = timer.elapsed
+
+    log("Performing GCV...")
+    with Timer() as timer:
+        X_centered = X_train - X_train.mean(axis=0)[None, :]
+        X_centered_norm2s = torch.tensor((X_centered**2).sum(axis=0))
+        gcv = GCV(
+            model.loss_fun,
+            y_train_torch,
+            y_hat_torch,
+            model.jac(device),
+            X_centered_norm2s,
+            m=1,
+            generator=gen,
+        )
+        results["gcv_risk"] = gcv.eval_risk(risk_fun) / n
+    results["gcv_time"] = timer.elapsed
 
     # Save the results
     with open(args.results_file, "w") as f:

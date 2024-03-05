@@ -379,6 +379,7 @@ class GCV(RandomizedMixin, ALOBase):
         """
         super().__init__(loss_fun, y, y_hat)
 
+        self._jac = jac
         self.m = m
 
         if generator is None:
@@ -391,14 +392,19 @@ class GCV(RandomizedMixin, ALOBase):
         matvecs, Omega = self._get_matvecs(m)
         transformed_diag_jac_estim = self.transform_jac((matvecs * Omega).T).mean(dim=0)
         tr_hat = transformed_diag_jac_estim.sum()
+        tr_hat.clamp_(min=1e-12, max=self.n)
 
         t = self._d2loss_dy_hat2 * X_centered_norm2s
-        t.clamp_(min=1e-12, max=1 - 1e-12)
 
         def f(mu):
             return (t / (t + mu)).sum() - tr_hat
 
-        bracket = [t.max() * (1 / tr_hat - 1), t.max() * (self.n / tr_hat - 1)]
+        t_max = t.max()
+        t_nz = t[t > 0]
+        t_min = t_nz.min()
+        nnz = t_nz.numel()
+        bracket = [t_min * (nnz / tr_hat - 1), t_max * (self.n / tr_hat - 1)]
+        # bracket = [1e-12, 1e12]
         mu = root_scalar(f, method="brentq", bracket=bracket).root
 
         self.transformed_diag_jac_gcv = t / (t + mu)
