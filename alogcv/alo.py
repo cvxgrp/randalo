@@ -357,3 +357,149 @@ class ALORandomized(ALOBase):
             1 / ms**power, risks, order
         )
         return coefs[0]
+
+class ALOviaTrace(ALOBase):
+    """ALO via trace estimation."""
+
+    def __init__(
+        self,
+        loss_fun: Callable[[Tensor, Tensor], Tensor],
+        y: Tensor,
+        y_hat: Tensor,
+        jac: LinearOperator,
+        m: int,
+        generator: Optional[torch.Generator] = None,
+        dtype: Optional[torch.dtype] = torch.float64,
+    ):
+        """Initialize a randomized ALO estimator.
+
+        Parameters
+        ----------
+        loss_fun : Callable[[Tensor, Tensor], Tensor]
+            The loss function.
+        y : Tensor
+            The true response.
+        y_hat : Tensor
+            The predictions.
+        jac : LinearOperator
+            The Jacobian.
+        m : int
+            The number of samples to initialize with.
+        generator : Optional[torch.Generator]
+            The random number generator.
+        """
+        super().__init__(loss_fun, y, y_hat)
+        self._jac = jac
+
+        self._transformed_diag_jac_estims = None
+        self.m = 0
+
+        if generator is None:
+            generator = torch.Generator(device=self._device)
+            generator.seed()
+        self._generator = generator
+
+        self.dtype = dtype
+
+        self._best_transformed_diag_jac = None
+        self._transformed_diag_jac_mean = None
+        self._transformed_diag_jac_std = None
+        self.do_diag_jac_estims_upto(m)
+
+    def _get_matvecs(self, m: int) -> [Tensor, Tensor]:
+        """Compute random matrix-vector products of the Jacobian using random Rademacher vectors.
+
+        Parameters
+        ----------
+        m : int
+            The number of samples to compute.
+
+        Returns
+        -------
+        [Tensor, Tensor]
+            The matrix-vector products and the random vectors.
+        """
+        Omega = (
+            torch.randint(
+                0, 2, (self.n, m), generator=self._generator, dtype=self.dtype
+            )
+            * 2.0
+            - 1
+        )
+        return self._jac @ Omega, Omega
+
+    def do_diag_jac_estims_upto(self, m: int) -> None:
+        """Compute more diagonal Jacobian estimates.
+
+        Parameters
+        ----------
+        m : int
+            The desired total number of samples.
+        """
+
+        if m <= self.m:
+            raise ValueError("m must be greater than the current number of samples")
+
+        # compute the matrix-vector products
+        matvecs, Omega = self._get_matvecs(m - self.m)
+
+        # update the diagonal Jacobian estimates
+        transformed_diag_jac_estims = self.transform_jac((matvecs * Omega).T).T
+        if self._transformed_diag_jac_estims is None:
+            self._transformed_diag_jac_estims = transformed_diag_jac_estims
+        else:
+            self._transformed_diag_jac_estims = torch.cat(
+                (self._transformed_diag_jac_estims, transformed_diag_jac_estims), dim=1
+            )
+        self.m = m
+
+        # compute the sufficient statistics and construct the truncated normal estimate
+        self._transformed_diag_jac_mean = self._transformed_diag_jac_estims.mean(dim=1)
+        self._transformed_diag_jac_std = self._transformed_diag_jac_estims.std(dim=1)
+        self._best_transformed_diag_jac = truncnorm_mean(
+            self._transformed_diag_jac_mean,
+            self._transformed_diag_jac_std / np.sqrt(m),
+            torch.tensor([0], device=self._device),
+            torch.tensor([1], device=self._device),
+        )
+
+    def joint_vars(self) -> [Tensor, Tensor]:
+        """Return the true response and corrected predictions."""
+        return self._y, self.y_tilde_from_transformed_jac(
+            self._best_transformed_diag_jac
+        )
+
+    def eval_risk(
+        self,
+        risk: Callable[[Tensor, Tensor], Tensor],
+        order: Optional[int] = 1,
+        power: float = 1.0,
+        n_points: int = 50,
+    ) -> float:
+        """Evaluate a risk function.
+
+        Parameters
+        ----------
+        risk : Callable[[Tensor, Tensor], Tensor]
+            The risk function.
+        order : Optional[int]
+            The order of the polynomial to fit to the risk estimates. If None, return the
+            risk estimate for the best diagonal Jacobian estimate.
+        power : float
+            The power of the polynomial to fit to the risk estimates.
+        n_points : int
+            The number of points to use for the polynomial fitting.
+
+        Returns
+        -------
+        float
+            The risk estimate.
+        """
+
+        T = self._d2loss_dy_hat2 * np.linalg.norm(X, axis=1)
+        hat_tr = lo.trace.hutchinson(B, m=1)
+        mu = scipy.optimize.brentq(lambda mu: (T / (T + mu)).sum() - hat_tr, 10e-12, 10e12)
+        diag_jac = T / (T + mu)
+        return (
+            risk(self._y, self.y_tilde_from_transformed_jac(diag_jac)).sum().item()
+        )
