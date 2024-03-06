@@ -17,10 +17,11 @@ from . import utils
 def sparse_safe_tensor(X):
     if sparse.issparse(X):
         X = X.tocoo()
-        indices = torch.tensor([X.row, X.col], dtype=torch.int64)
+        indices = torch.tensor(np.asarray([X.row, X.col]), dtype=torch.int64)
         values = torch.tensor(X.data)
         X = torch.sparse_coo_tensor(indices, values, X.shape)
-        return X.to_sparse_csr()
+        # X = X.to_sparse_csr()
+        return X
     else:
         return torch.tensor(X)
 
@@ -118,7 +119,11 @@ class LinearOperatorWrapper(LinearOperator):
 
 
 class SeparableRegularizerJacobian(LinearOperator):
-    supports_operator_matrix = True
+
+    # TODO: extend to multiple right-hand-sides for sparse X case
+    @property
+    def supports_operator_matrix(self):
+        return not self.issparse
 
     def __init__(self, X, loss_hessian_diag, loss_dy_dy_hat_diag, reg_hessian_diag):
         self._shape = (X.shape[0], X.shape[0])
@@ -161,7 +166,10 @@ class SeparableRegularizerJacobian(LinearOperator):
             Z = torch.linalg.ldl_solve(self.LD, self.pivots, B)
         # sparse X case:
         else:
+            # TODO: extend to multiple right-hand sides
+            B = B[..., 0]
             Z = minres(self.H, B)
+            Z = Z[..., None]
 
         if need_squeeze:
             Z = Z[..., 0]
@@ -177,10 +185,7 @@ class SeparableRegularizerJacobian(LinearOperator):
             )
         # sparse X case:
         else:
-            return -self.X_mask @ minres(
-                self.H,
-                self.X_mask.T @ torch.diag(self.loss_dy_dy_hat_diag_),
-            )
+            return self @ torch.eye(self.shape[0])
 
     @property
     def diag(self):

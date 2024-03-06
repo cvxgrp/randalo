@@ -3,11 +3,12 @@
     "seed": 0,
     "device": "cpu",
     "data": {
-        "src": "varying_norm_sparse_awgn",
-        "n_train": 1000,
+        "src": "iid_sparse_normal_sparse_awgn",
+        "n_train": 200,
         "n_test": 10000,
-        "p": 1000,
-        "s": 100,
+        "p": 200,
+        "nz_ratio": 0.1,
+        "s": 20,
         "sigma": 0.1
     },
     "method": "lasso",

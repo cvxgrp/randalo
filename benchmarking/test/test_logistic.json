@@ -4,10 +4,10 @@
     "device": "cpu",
     "data": {
         "src": "iid_normal_logistic_sparse",
-        "n_train": 2000,
+        "n_train": 5000,
         "n_test": 10000,
-        "p": 2000,
-        "s": 200,
+        "p": 5000,
+        "s": 500,
         "rho": 5.0
     },
     "method": "logistic",
@@ -19,5 +19,5 @@
     },
     "risk": "zero_one",
     "cv_k": [2, 5],
-    "alo_m": [] 
+    "alo_m": [100] 
 }

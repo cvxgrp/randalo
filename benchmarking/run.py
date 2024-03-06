@@ -258,10 +258,10 @@ def get_centered_norm2s(X):
     X_mean = X.mean(axis=0)
     if sparse.issparse(X):
         X_mean = X_mean.A1
-        X2 = X.power(2)
+        X_norm2 = X.power(2).sum(axis=1).A1
     else:
-        X2 = X**2
-    return X2.sum(axis=1) - 2 * X @ X_mean + X_mean @ X_mean
+        X_norm2 = (X**2).sum(axis=1)
+    return X_norm2 - 2 * X @ X_mean + X_mean @ X_mean
 
 
 if __name__ == "__main__":
