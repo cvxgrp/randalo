@@ -3,6 +3,7 @@ import json
 import time
 
 import numpy as np
+from scipy import sparse
 import torch
 
 from sklearn.linear_model import Lasso
@@ -41,6 +42,47 @@ def log(message, *args, **kwargs):
 
 def extract_dict_keys(d, keys):
     return tuple(d[k] for k in keys)
+
+
+def generate_sparse_normal(n, p, nz_ratio, rng=None):
+
+    if n > p:
+        p, n = n, p
+        transposed = True
+    else:
+        transposed = False
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    ##################################
+    # Implementation based on ChatGPT
+    ##################################
+    rows, cols, data = [], [], []
+
+    # Generate the sparse matrix
+    for i in range(n):
+        # Determine the number of non-zero elements for the current row
+        non_zero_elements = rng.binomial(p, nz_ratio)
+
+        # Choose random positions for the non-zero elements
+        if non_zero_elements > 0:
+            col_indices = rng.choice(p, non_zero_elements, replace=False)
+
+            # Generate the non-zero values from a Gaussian distribution
+            values = rng.normal(scale=1 / np.sqrt(nz_ratio), size=non_zero_elements)
+
+            # Append the information to the lists
+            rows.extend([i] * non_zero_elements)
+            cols.extend(col_indices)
+            data.extend(values)
+
+    # Create the CSR matrix
+    X = sparse.csr_matrix((data, (rows, cols)), shape=(n, p))
+
+    if transposed:
+        X = X.T
+    return X
 
 
 def get_data(data_config, rng):
@@ -127,6 +169,22 @@ def get_data(data_config, rng):
 
         gen_risk_linear = None
 
+    elif data_config["src"] == "iid_sparse_normal_sparse_awgn":
+        n_train, n_test, p, nz_ratio, s, sigma = extract_dict_keys(
+            data_config, ["n_train", "n_test", "p", "nz_ratio", "s", "sigma"]
+        )
+
+        X_train = generate_sparse_normal(n_train, p, nz_ratio, rng)
+        X_test = generate_sparse_normal(n_test, p, nz_ratio, rng)
+        beta = np.zeros(p)
+        beta[:s] = rng.normal(size=s) / np.sqrt(s)
+        y_train = X_train @ beta + rng.normal(scale=sigma, size=n_train)
+        y_test = X_test @ beta + rng.normal(scale=sigma, size=n_test)
+
+        gen_risk_linear = (
+            lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
+        )
+
     else:
         raise ValueError(f"Unknown data source {data_config['src']}")
 
@@ -194,6 +252,16 @@ def cross_val_risk(model, X, y, risk_fun, k=5):
         scores.append(np.mean(risk_fun(y_test, y_hat)))
 
     return np.mean(scores)
+
+
+def get_centered_norm2s(X):
+    X_mean = X.mean(axis=0)
+    if sparse.issparse(X):
+        X_mean = X_mean.A1
+        X2 = X.power(2)
+    else:
+        X2 = X**2
+    return X2.sum(axis=1) - 2 * X @ X_mean + X_mean @ X_mean
 
 
 if __name__ == "__main__":
@@ -301,8 +369,7 @@ if __name__ == "__main__":
 
     log("Performing GCV...")
     with Timer() as timer:
-        X_centered = X_train - X_train.mean(axis=0)[None, :]
-        X_centered_norm2s = torch.tensor((X_centered**2).sum(axis=0))
+        X_centered_norm2s = torch.tensor(get_centered_norm2s(X_train), device=device)
         gcv = GCV(
             model.loss_fun,
             y_train_torch,

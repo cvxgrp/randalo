@@ -389,23 +389,27 @@ class GCV(RandomizedMixin, ALOBase):
 
         self.dtype = dtype
 
+        # apply Hutchinson's method to estimate the trace of the normalized Jacobian
         matvecs, Omega = self._get_matvecs(m)
         transformed_diag_jac_estim = self.transform_jac((matvecs * Omega).T).mean(dim=0)
         tr_hat = transformed_diag_jac_estim.sum()
-        tr_hat.clamp_(min=1e-12, max=self.n)
+        tr_hat.clamp_(min=1e-12, max=self.n * (1 - 1e-12))
 
+        # exploit the relation X(X^T X + G)^{-1} ~= T (T + mu I)^{-1} to find mu
         t = self._d2loss_dy_hat2 * X_centered_norm2s
 
+        # trace is a sufficient summary statistic
         def f(mu):
             return (t / (t + mu)).sum() - tr_hat
 
+        # find mu via root finding with appropriate bracket
         t_max = t.max()
         t_nz = t[t > 0]
         t_min = t_nz.min()
         nnz = t_nz.numel()
         bracket = [t_min * (nnz / tr_hat - 1), t_max * (self.n / tr_hat - 1)]
-        # bracket = [1e-12, 1e12]
         mu = root_scalar(f, method="brentq", bracket=bracket).root
 
+        # compute the asymptotic equvalent of the diagonal for GCV
         self.transformed_diag_jac_gcv = t / (t + mu)
         self._y_tilde = self.y_tilde_from_transformed_jac(self.transformed_diag_jac_gcv)

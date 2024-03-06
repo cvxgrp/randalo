@@ -1,14 +1,28 @@
 from abc import ABC, abstractmethod, abstractstaticmethod
 
 import numpy as np
+from scipy import sparse
 import torch
 
 from sklearn.linear_model import Lasso, LogisticRegression
 from sklearn.exceptions import NotFittedError
 
+import linops as lo
 from linops import LinearOperator
+from linops.minres import minres
 
 from . import utils
+
+
+def sparse_safe_tensor(X):
+    if sparse.issparse(X):
+        X = X.tocoo()
+        indices = torch.tensor([X.row, X.col], dtype=torch.int64)
+        values = torch.tensor(X.data)
+        X = torch.sparse_coo_tensor(indices, values, X.shape)
+        return X.to_sparse_csr()
+    else:
+        return torch.tensor(X)
 
 
 class ALOModel(ABC):
@@ -24,7 +38,7 @@ class ALOModel(ABC):
         self.y_hat = self.model.predict(X)
 
         # Store data and compute derivatives using torch
-        self._X = torch.tensor(X)
+        self._X = sparse_safe_tensor(X)
         (
             self._y,
             self._y_hat,
@@ -85,6 +99,24 @@ class LinearMixin(ABC):
         return self.model.coef_
 
 
+class LinearOperatorWrapper(LinearOperator):
+    supports_operator_matrix = True
+
+    def __init__(self, A, adjoint=None):
+        self._shape = (A.shape[0], A.shape[0])
+        self.device = A.device
+        self.dtype = A.dtype
+        self.A = A
+
+        if adjoint is None:
+            self._adjoint = LinearOperatorWrapper(A.t(), self)
+        else:
+            self._adjoint = adjoint
+
+    def _matmul_impl(self, B):
+        return self.A @ B
+
+
 class SeparableRegularizerJacobian(LinearOperator):
     supports_operator_matrix = True
 
@@ -96,11 +128,23 @@ class SeparableRegularizerJacobian(LinearOperator):
         self.loss_dy_dy_hat_diag_ = loss_dy_dy_hat_diag
 
         mask = torch.isfinite(reg_hessian_diag)
-        self.X_mask = X[:, mask]
-        H = self.X_mask.T @ (loss_hessian_diag[:, None] * self.X_mask) + torch.diag(
-            reg_hessian_diag[mask]
-        )
-        self.LD, self.pivots = torch.linalg.ldl_factor(H)
+
+        # dense X case:
+        if X.layout == torch.strided:
+            self.issparse = False
+            self.X_mask = X[:, mask]
+            H = self.X_mask.T @ (loss_hessian_diag[:, None] * self.X_mask) + torch.diag(
+                reg_hessian_diag[mask]
+            )
+            self.LD, self.pivots = torch.linalg.ldl_factor(H)
+
+        # sparse X case:
+        else:
+            self.issparse = True
+            self.X_mask = LinearOperatorWrapper(X)[:, mask]
+            self.H = self.X_mask.T @ lo.DiagonalOperator(
+                loss_hessian_diag
+            ) @ self.X_mask + lo.DiagonalOperator(reg_hessian_diag[mask])
 
     def _matmul_impl(self, A):
         if A.ndim == 1:
@@ -110,22 +154,37 @@ class SeparableRegularizerJacobian(LinearOperator):
             need_squeeze = False
 
         A = -self.loss_dy_dy_hat_diag_[:, None] * A
+        B = self.X_mask.T @ A
 
-        Z = torch.linalg.ldl_solve(self.LD, self.pivots, self.X_mask.T @ A)
+        # dense X case:
+        if not self.issparse:
+            Z = torch.linalg.ldl_solve(self.LD, self.pivots, B)
+        # sparse X case:
+        else:
+            Z = minres(self.H, B)
 
         if need_squeeze:
             Z = Z[..., 0]
 
         return self.X_mask @ Z
 
-    @property
-    def diag(self):
-        return torch.diag(
-            -self.X_mask
-            @ torch.linalg.ldl_solve(
+    def todense(self):
+
+        # dense X case:
+        if not self.issparse:
+            return -self.X_mask @ torch.linalg.ldl_solve(
                 self.LD, self.pivots, self.X_mask.T * self.loss_dy_dy_hat_diag_[None, :]
             )
-        )
+        # sparse X case:
+        else:
+            return -self.X_mask @ minres(
+                self.H,
+                self.X_mask.T @ torch.diag(self.loss_dy_dy_hat_diag_),
+            )
+
+    @property
+    def diag(self):
+        return torch.diag(self.todense())
 
 
 class LinearSeparableRegularizerJacobian(LinearOperator):
@@ -301,7 +360,8 @@ class FirstDifferenceModel(LinearMixin, LinearSeparableRegularizerMixin, ALOMode
                 t = cp.Variable()
                 prob = cp.Problem(
                     cp.Minimize(
-                        1 / (2 * X.shape[0]) * cp.sum_squares(y - X @ w) + self.lamda * cp.norm(cp.diff(w), 1)
+                        1 / (2 * X.shape[0]) * cp.sum_squares(y - X @ w)
+                        + self.lamda * cp.norm(cp.diff(w), 1)
                     ),
                 )
                 prob.solve(cp.CLARABEL, **self.cvxpy_kwargs)
