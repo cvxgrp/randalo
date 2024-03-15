@@ -4,18 +4,19 @@
     "device": "cpu",
     "data": {
         "src": "iid_sparse_normal_sparse_awgn",
-        "n_train": 200,
+        "n_train": 5000,
         "n_test": 10000,
-        "p": 200,
+        "p": 5000,
         "nz_ratio": 0.1,
-        "s": 20,
+        "s": 500,
         "sigma": 0.1
     },
     "method": "lasso",
     "method_kwargs": {
         "lamda0": 1.0
     },
-    "risk": "zero_one",
+    "risk": "squared_error",
     "cv_k": [2, 5],
+    "alo_exact": false,
     "alo_m": [10, 30, 50, 100, 300] 
 }

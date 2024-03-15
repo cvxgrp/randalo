@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod, abstractstaticmethod
 
 import numpy as np
 from scipy import sparse
+from scipy.sparse.linalg import LinearOperator as ScipyLinearOperator, minres
 import torch
 
 from sklearn.linear_model import Lasso, LogisticRegression
@@ -9,19 +10,15 @@ from sklearn.exceptions import NotFittedError
 
 import linops as lo
 from linops import LinearOperator
-from linops.minres import minres
+
+# from linops.minres import minres
 
 from . import utils
 
 
 def sparse_safe_tensor(X):
     if sparse.issparse(X):
-        X = X.tocoo()
-        indices = torch.tensor(np.asarray([X.row, X.col]), dtype=torch.int64)
-        values = torch.tensor(X.data)
-        X = torch.sparse_coo_tensor(indices, values, X.shape)
-        # X = X.to_sparse_csr()
-        return X
+        return X.tocsc()
     else:
         return torch.tensor(X)
 
@@ -66,7 +63,8 @@ class ALOModel(ABC):
         ):
             if device is None:
                 device = self._X.device
-            self._X = self._X.to(device)
+            if not sparse.issparse(self._X):
+                self._X = self._X.to(device)
             self._y = self._y.to(device)
             self._y_hat = self._y_hat.to(device)
             self._dloss_dy_hat = self._dloss_dy_hat.to(device)
@@ -118,6 +116,26 @@ class LinearOperatorWrapper(LinearOperator):
         return self.A @ B
 
 
+class ATD1APlusD2(ScipyLinearOperator):
+    """Linear operator representing A.T @ D1 @ A + D2, where A is a linear operator and D1 and D2 are diagonal matrices."""
+
+    def __init__(self, A, D1, D2):
+        self.shape = (A.shape[1], A.shape[1])
+        self.dtype = A.dtype
+        self.A = A
+        self.D1 = D1
+        self.D2 = D2
+
+    def _matvec(self, v):
+        return self.A.T @ (self.D1 @ (self.A @ v)) + self.D2 @ v
+
+    def _matmat(self, V):
+        return self.A.T @ (self.D1 @ (self.A @ V)) + self.D2 @ V
+
+    def _adjoint(self):
+        return self
+
+
 class SeparableRegularizerJacobian(LinearOperator):
 
     # TODO: extend to multiple right-hand-sides for sparse X case
@@ -127,29 +145,32 @@ class SeparableRegularizerJacobian(LinearOperator):
 
     def __init__(self, X, loss_hessian_diag, loss_dy_dy_hat_diag, reg_hessian_diag):
         self._shape = (X.shape[0], X.shape[0])
-        self.device = X.device
+
+        if sparse.issparse(X):
+            X = X.tocsc()
+            self.issparse = True
+            self.device = "cpu"
+        else:
+            self.device = X.device
         self.dtype = X.dtype
         self.loss_hessian_diag = loss_hessian_diag
         self.loss_dy_dy_hat_diag_ = loss_dy_dy_hat_diag
 
         mask = torch.isfinite(reg_hessian_diag)
+        self.X_mask = X[:, mask]
+
+        # sparse X case:
+        if sparse.issparse(X):
+            D1 = sparse.diags(loss_hessian_diag.numpy())
+            D2 = sparse.diags(reg_hessian_diag[mask].numpy())
+            self.H = ATD1APlusD2(self.X_mask, D1, D2)
 
         # dense X case:
-        if X.layout == torch.strided:
-            self.issparse = False
-            self.X_mask = X[:, mask]
+        else:
             H = self.X_mask.T @ (loss_hessian_diag[:, None] * self.X_mask) + torch.diag(
                 reg_hessian_diag[mask]
             )
             self.LD, self.pivots = torch.linalg.ldl_factor(H)
-
-        # sparse X case:
-        else:
-            self.issparse = True
-            self.X_mask = LinearOperatorWrapper(X)[:, mask]
-            self.H = self.X_mask.T @ lo.DiagonalOperator(
-                loss_hessian_diag
-            ) @ self.X_mask + lo.DiagonalOperator(reg_hessian_diag[mask])
 
     def _matmul_impl(self, A):
         if A.ndim == 1:
@@ -159,22 +180,21 @@ class SeparableRegularizerJacobian(LinearOperator):
             need_squeeze = False
 
         A = -self.loss_dy_dy_hat_diag_[:, None] * A
-        B = self.X_mask.T @ A
 
         # dense X case:
         if not self.issparse:
+            B = self.X_mask.T @ A
             Z = torch.linalg.ldl_solve(self.LD, self.pivots, B)
         # sparse X case:
         else:
-            # TODO: extend to multiple right-hand sides
-            B = B[..., 0]
-            Z = minres(self.H, B)
-            Z = Z[..., None]
+            B = self.X_mask.T @ A.numpy()
+            Z = minres(self.H, B)[0]
+            need_squeeze = False
 
         if need_squeeze:
             Z = Z[..., 0]
 
-        return self.X_mask @ Z
+        return torch.as_tensor(self.X_mask @ Z)
 
     def todense(self):
 
