@@ -335,16 +335,17 @@ class ALORandomized(RandomizedMixin, ALOBase):
                 risk(self._y, self.y_tilde_from_transformed_jac(diag_jac)).numpy()
             )
 
-        cov = np.cov(risks)
+        cov = self.n * np.cov(risks)
         # return the constant term of the polynomial fit
         self._ms = ms
         self._risks = risks.sum(axis=1)
-        coefs, self._res_m_to_risk_fit = utils.robust_poly_fit(
-            1 / ms**power, self._risks, order
-        )
-        coefsv2, Sigma = utils.weighted_lstsq_fit(1 / ms**power, self._risks, order, cov)
+        #coefs, self._res_m_to_risk_fit = utils.robust_poly_fit(
+            #1 / ms**power, self._risks, order
+        #)
+        risk, stddev = utils.weighted_lstsq_fit(1 / ms**power, self._risks, order, cov)
+        self.error_estimate = stddev
 
-        return coefs[0]
+        return risk
 
 
 class GCV(RandomizedMixin, ALOBase):

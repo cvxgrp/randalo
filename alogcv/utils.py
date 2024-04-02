@@ -48,8 +48,9 @@ def weighted_lstsq_fit(x, y, order: int, cov):
     w2 = L @ y
 
     Sigma = L @ cov @ L.T
+    stddev = np.sqrt(Sigma[0, 0])
 
-    return w, Sigma
+    return w[0], stddev
 
 def compute_derivatives(loss_fun, y, y_hat):
 
