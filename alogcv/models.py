@@ -151,6 +151,7 @@ class SeparableRegularizerJacobian(LinearOperator):
             self.issparse = True
             self.device = "cpu"
         else:
+            self.issparse = False
             self.device = X.device
         self.dtype = X.dtype
         self.loss_hessian_diag = loss_hessian_diag

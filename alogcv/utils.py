@@ -3,6 +3,7 @@ import time
 import cvxpy as cp
 import numpy as np
 import linops as lo
+import scipy
 import torch
 from torch import autograd
 
@@ -18,6 +19,37 @@ def robust_poly_fit(x, y, order: int):
         return [np.nan for _ in range(order + 1)], np.inf
     return beta.value, r.value
 
+def weighted_lstsq_fit(x, y, order: int, cov):
+    # solves min_beta  1/2 (X beta - y)^T cov^{-1} (X @ beta - y)
+    #                = 1/2 (beta^T X^T - y^T) (cov^{-1} X @ beta - cov^{-1} y)
+    #                = 1/2 (beta^T X^T cov^{-1} X @ beta) - beta^T X^T cov^{-1} y + constant
+    #                = 1/2 (beta^T X^T cov^{-1} X @ beta) - beta^T X^T cov^{-1} y + constant
+    #   i.e. beta^star = Ly = (X^T cov^{-1} X)^{-1} X^T cov^{-1} y
+    # Alternatively we're after 
+    #  min. 1/2 r^T cov^{-1} r s.t. r = y - X beta
+    # which becomes
+    # min. 1/2 r^T cov^{-1} r s.t. y = [I X] (r, beta)
+    # [cov^{-1} 0 I  ] [r   ]   [0]
+    # [0        0 X^T] [beta] = [0]
+    # [I        X 0  ] [nu  ]   [y]
+    # whose Schur complement is given by
+    # ([0 X^T]   [ 0 ]            )[beta]   [0]
+    # ([X 0  ] - [ I ] cov [ 0 I ])[nu  ] = [y]
+    # r = -cov [ 0  I ] (beta, nu)
+    #
+    # [0  X^T][beta]   [0]
+    # [X -cov][nu  ] = [y]
+    # cannot apply a similar trick here :( have to factor this directly
+
+    # Disabled weighted least squares because of numerical issues for now
+    X = np.vander(x, order + 1, True)
+    w = np.linalg.lstsq(X, y, rcond=None)[0]
+    L = np.linalg.solve(X.T @ X, X.T)
+    w2 = L @ y
+
+    Sigma = L @ cov @ L.T
+
+    return w, Sigma
 
 def compute_derivatives(loss_fun, y, y_hat):
 
