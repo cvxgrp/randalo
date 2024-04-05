@@ -467,6 +467,7 @@ if __name__ == "__main__":
         with Timer() as timer:
             results[f"alo_{m}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / n
         results[f"alo_{m}_poly_risk_time"] = timer.elapsed
+        results[f"alo_{m}_poly_risk_error"] = alo.error_estimate / n
 
     log("Performing GCV...")
     with Timer() as timer:

@@ -310,7 +310,7 @@ class ALORandomized(RandomizedMixin, ALOBase):
 
         # initialize the arrays for the polynomial fitting
         ms = np.linspace(m0, self.m, n_points).astype(int)
-        risks = np.zeros(n_points)
+        risks = np.zeros((n_points, self.n))
 
         # iterate over the number of samples
         for i, m in enumerate(ms):
@@ -331,17 +331,21 @@ class ALORandomized(RandomizedMixin, ALOBase):
             )
 
             # compute the risk estimate
-            risks[i] = (
-                risk(self._y, self.y_tilde_from_transformed_jac(diag_jac)).sum().item()
+            risks[i, :] = (
+                risk(self._y, self.y_tilde_from_transformed_jac(diag_jac)).numpy()
             )
 
+        cov = self.n * np.cov(risks)
         # return the constant term of the polynomial fit
         self._ms = ms
-        self._risks = risks
-        coefs, self._res_m_to_risk_fit = utils.robust_poly_fit(
-            1 / ms**power, risks, order
-        )
-        return coefs[0]
+        self._risks = risks.sum(axis=1)
+        #coefs, self._res_m_to_risk_fit = utils.robust_poly_fit(
+            #1 / ms**power, self._risks, order
+        #)
+        risk, stddev = utils.weighted_lstsq_fit(1 / ms**power, self._risks, order, cov)
+        self.error_estimate = stddev
+
+        return risk
 
 
 class GCV(RandomizedMixin, ALOBase):
