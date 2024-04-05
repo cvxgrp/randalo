@@ -151,6 +151,7 @@ class SeparableRegularizerJacobian(LinearOperator):
             self.issparse = True
             self.device = "cpu"
         else:
+            self.issparse = False
             self.device = X.device
         self.dtype = X.dtype
         self.loss_hessian_diag = loss_hessian_diag
@@ -160,7 +161,7 @@ class SeparableRegularizerJacobian(LinearOperator):
         self.X_mask = X[:, mask]
 
         # sparse X case:
-        if sparse.issparse(X):
+        if self.issparse:
             D1 = sparse.diags(loss_hessian_diag.numpy())
             D2 = sparse.diags(reg_hessian_diag[mask].numpy())
             self.H = ATD1APlusD2(self.X_mask, D1, D2)
@@ -433,8 +434,10 @@ class LogisticModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
 
     The optimization objective is given by
     ```
-    1 / n * sum_i log(1 + exp(-y_i * x_i^T w)) + lamda * ||w||_1
+    1 / n * sum_i log(1 + exp(-y_i * x_i^T w)) + lamda / p * ||w||_p^p
     ```
+    where the norm is either the l1 norm or the l2 norm squared as
+    specified by the `penalty` parameter in `sklearn_logistic_kwargs`.
 
     """
 
@@ -455,8 +458,13 @@ class LogisticModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
     @property
     def reg_hessian_diag_(self):
         self._fitted_check()
-        hess = np.zeros(self.X.shape[1])
-        hess[self.coef_ == 0] = float("inf")
+
+        if self.sklearn_logistic_kwargs["penalty"] == "l1":
+            hess = np.zeros(self.X.shape[1])
+            hess[self.coef_ == 0] = float("inf")
+        else:
+            hess = np.ones(self.X.shape[1]) * self.lamda
+
         return torch.tensor(hess)
 
     @staticmethod

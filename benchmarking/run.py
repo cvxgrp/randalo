@@ -1,13 +1,19 @@
 import argparse
 import json
+import os
 import time
 
 import numpy as np
 from scipy import sparse
 import torch
 
-from sklearn.linear_model import Lasso
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.compose import ColumnTransformer
+from sklearn.datasets import fetch_openml
+from sklearn.impute import SimpleImputer, MissingIndicator
 from sklearn.model_selection import KFold
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.pipeline import Pipeline
 
 from alogcv.alo import ALOExact, ALORandomized, GCV
 from alogcv.models import LinearMixin, LassoModel, FirstDifferenceModel, LogisticModel
@@ -85,6 +91,91 @@ def generate_sparse_normal(n, p, nz_ratio, rng=None):
     return X
 
 
+class AddMissingIndicatorAndImpute(BaseEstimator, TransformerMixin):
+    """Custom transformer for adding missing indicators and imputing"""
+
+    def __init__(self):
+        self.imputer = SimpleImputer(strategy="constant", fill_value=0)
+        self.indicator = MissingIndicator(features="missing-only", error_on_new=False)
+
+    def fit(self, X, y=None):
+        X = X.astype(float)
+        self.imputer.fit(X, y)
+        self.indicator.fit(X, y)
+        return self
+
+    def transform(self, X):
+        X = X.astype(float)
+        imputed_data = self.imputer.transform(X)
+        missing_indicator = self.indicator.transform(X)
+        return np.hstack((imputed_data, missing_indicator))
+
+
+def load_kddcup09(task):
+
+    # load and preprocess the training data
+    with open(
+        os.path.join(
+            os.path.dirname(__file__),
+            "data",
+            "kddcup09",
+            "orange_small_train.data",
+            "orange_small_train.data",
+        ),
+        "r",
+    ) as f:
+        X_train = np.loadtxt(f, delimiter="\t", skiprows=1, dtype=object)
+
+    X_train[X_train == ""] = np.nan
+
+    numeric_transformer = Pipeline(
+        steps=[("add_indicator_and_impute", AddMissingIndicatorAndImpute())]
+    )
+
+    # For categorical features: impute missing values and then apply one-hot encoding
+    categorical_transformer = Pipeline(
+        steps=[
+            # ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+            ("onehot", OneHotEncoder(handle_unknown="ignore"))
+        ]
+    )
+
+    numeric_features = slice(0, 190)
+    categorical_features = slice(190, 230)
+
+    # Combine transformers into a ColumnTransformer
+    preprocessor = Pipeline(
+        steps=[
+            (
+                "column_transformer",
+                ColumnTransformer(
+                    transformers=[
+                        ("num", numeric_transformer, numeric_features),
+                        ("cat", categorical_transformer, categorical_features),
+                    ]
+                ),
+            ),
+            ("scaler", StandardScaler(with_mean=False)),
+        ]
+    )
+
+    X_train = preprocessor.fit_transform(X_train)
+
+    # load the target variable
+    with open(
+        os.path.join(
+            os.path.dirname(__file__),
+            "data",
+            "kddcup09",
+            f"orange_small_train_{task}.labels",
+        ),
+        "r",
+    ) as f:
+        y_train = np.loadtxt(f)
+
+    return X_train, y_train
+
+
 def get_data(data_config, rng):
 
     if data_config["src"] == "iid_normal_sparse_awgn":
@@ -157,10 +248,12 @@ def get_data(data_config, rng):
         n_train, n_test, p, s, rho = extract_dict_keys(
             data_config, ["n_train", "n_test", "p", "s", "rho"]
         )
-        X_train = rng.normal(size=(n_train, p))
-        X_test = rng.normal(size=(n_test, p))
+        x_mean = rng.normal(size=(1, p))
+        X_train = rng.normal(size=(n_train, p)) + x_mean / np.sqrt(s) * 2
+        X_test = rng.normal(size=(n_test, p)) + x_mean / np.sqrt(s) * 2
         beta = np.zeros(p)
-        beta[:s] = rng.normal(size=s) / np.sqrt(s)
+        # beta[:s] = rng.normal(size=s) / np.sqrt(s)
+        beta[:s] = x_mean[0, :s] / np.sqrt(s)
 
         prob = 1 / (1 + np.exp(-X_train @ beta * rho))
         y_train = (rng.uniform(size=n_train) < prob).astype(float) * 2 - 1
@@ -185,6 +278,11 @@ def get_data(data_config, rng):
             lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
         )
 
+    elif data_config["src"] == "kddcup09_upselling":
+        X_train, y_train = load_kddcup09("upselling")
+        gen_risk_linear = None
+        X_test = y_test = None
+
     else:
         raise ValueError(f"Unknown data source {data_config['src']}")
 
@@ -196,6 +294,8 @@ def get_data(data_config, rng):
             return None
 
     def test_risk(model, risk_fun):
+        if X_test is None or y_test is None:
+            return None
         y_hat = model.predict(X_test)
         return np.mean(risk_fun(y_test, y_hat))
 
@@ -287,7 +387,7 @@ if __name__ == "__main__":
     gen = torch.Generator()
     gen.manual_seed(config["seed"])
 
-    log("Generating data...")
+    log("Generating/loading data...")
     X_train, y_train, gen_risk, test_risk = get_data(config["data"], rng)
     n, p = X_train.shape
 
@@ -328,17 +428,18 @@ if __name__ == "__main__":
     y_train_torch = torch.tensor(y_train, device=device)
     y_hat_torch = torch.tensor(model.predict(X_train), device=device)
 
-    log("Performing exact ALO...")
-    with Timer() as timer:
-        diag_jac = model.jac(device).diag
-        alo_exact = ALOExact(
-            model.loss_fun,
-            y_train_torch,
-            y_hat_torch,
-            diag_jac,
-        )
-        results["alo_exact_risk"] = alo_exact.eval_risk(risk_fun) / n
-    results["alo_exact_time"] = timer.elapsed
+    if config["alo_exact"]:
+        log("Performing exact ALO...")
+        with Timer() as timer:
+            diag_jac = model.jac(device).diag
+            alo_exact = ALOExact(
+                model.loss_fun,
+                y_train_torch,
+                y_hat_torch,
+                diag_jac,
+            )
+            results["alo_exact_risk"] = alo_exact.eval_risk(risk_fun) / n
+        results["alo_exact_time"] = timer.elapsed
 
     alo = None
     running_matvec_time = 0

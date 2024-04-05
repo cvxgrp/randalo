@@ -395,7 +395,7 @@ class GCV(RandomizedMixin, ALOBase):
         tr_hat = transformed_diag_jac_estim.sum()
         tr_hat.clamp_(min=1e-12, max=self.n * (1 - 1e-12))
 
-        # exploit the relation X(X^T X + G)^{-1} ~= T (T + mu I)^{-1} to find mu
+        # exploit the relation X(X^T X + G)^{-1}X^T ~= T (T + mu I)^{-1} to find mu
         t = self._d2loss_dy_hat2 * X_centered_norm2s
 
         # trace is a sufficient summary statistic
