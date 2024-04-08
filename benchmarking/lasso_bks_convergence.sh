@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=16GB
 #SBATCH --partition=candes
-#SBATCH --array=1-300
+#SBATCH --array=1-100
 
 BASE_DIR=$HOME/alo/benchmarking/lasso_bks_convergence
 CONFIGS_DIR=$BASE_DIR/configs
