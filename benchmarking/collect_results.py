@@ -130,14 +130,18 @@ def extract_all_results(results, axes_keys):
     gen_risks = extract_results(results, ["gen_risk"])
     test_risks = extract_results(results, ["test_risk"])
 
-    cv_risks = np.stack(
-        [extract_results(results, [f"cv_{k}_risk"]) for k in cv_k],
-        axis=-1,
-    )
-    cv_times = np.stack(
-        [extract_results(results, [f"cv_{k}_risk_time"]) for k in cv_k],
-        axis=-1,
-    )
+    if len(cv_k) > 0:
+        cv_risks = np.stack(
+            [extract_results(results, [f"cv_{k}_risk"]) for k in cv_k],
+            axis=-1,
+        )
+        cv_times = np.stack(
+            [extract_results(results, [f"cv_{k}_risk_time"]) for k in cv_k],
+            axis=-1,
+        )
+    else:
+        cv_risks = None
+        cv_times = None
 
     alo_exact_risks = extract_results(results, ["alo_exact_risk"])
     full_train_times = extract_results(results, ["full_train_time"])
@@ -425,6 +429,76 @@ def lasso_scaling_normal(results):
     )
 
 
+def lasso_bks_convergence(results):
+
+    axes_keys = [
+        ["config", "seed"],
+    ]
+
+    results = extract_all_results(results, axes_keys)
+    (seeds,) = results.axes
+
+    ms = np.asarray(results.alo_m)
+    ms_recip = 1 / ms
+    ms_recip = np.concatenate([1 / ms[:-1], [0.0]])
+
+    plt.plot(1 / ms, np.median(results.alo_bks_risks, axis=0).T, label="BKS-ALO")
+    plt.plot(1 / ms, np.median(results.alo_poly_risks, axis=0).T, "-.", label="RandALO")
+
+    plt.fill_between(
+        ms_recip,
+        *np.percentile(results.alo_bks_risks, [25, 75], axis=0),
+        alpha=0.2,
+    )
+    plt.fill_between(
+        ms_recip,
+        *np.percentile(results.alo_poly_risks, [25, 75], axis=0),
+        alpha=0.2,
+    )
+
+    plt.axhline(np.median(results.test_risks), color="black", linestyle="--")
+    # fill between interquartile range of test risk
+    xlim = np.asarray([0, np.max(ms_recip)])
+    plt.fill_between(
+        xlim,
+        *np.percentile(results.test_risks, [25, 75])[:, None],
+        facecolor="black",
+        alpha=0.2,
+    )
+    ylim = plt.ylim()
+    aspect_ratio = (xlim[1] - xlim[0]) / (ylim[1] - ylim[0])
+
+    for angle in np.linspace(0, np.pi / 2, 9)[1:-1]:
+        plt.plot(
+            xlim,
+            np.median(results.alo_bks_risks[:, -1])
+            + np.tan(angle) * (xlim - xlim[0]) / aspect_ratio,
+            color="black",
+            linestyle=":",
+            alpha=0.2,
+        )
+
+    ms_filter = np.asarray([m for m in ms if m >= 25 and m <= 50])
+    i_ms = [results.alo_m.index(m) for m in ms_filter]
+
+    risks = np.median(results.alo_bks_risks[:, i_ms], axis=0)
+
+    plt.scatter(
+        1 / ms_filter,
+        np.median(results.alo_bks_risks[:, i_ms], axis=0),
+    )
+
+    plt.xlim(xlim)
+    plt.ylim(ylim)
+
+    plt.title("Convergence of Risk Estimate in $m$")
+    plt.xlabel("$1/m$")
+    plt.ylabel("Risk estimate")
+    plt.legend()
+
+    plt.show()
+
+
 def lasso_scaling_1():
 
     # TODO: refactor!!!
@@ -497,7 +571,72 @@ def lasso_scaling_1():
     plt.show()
 
 
-def first_diff_scaling_1():
+def first_diff_scaling_1(results):
+
+    axes_keys = [
+        ["config", "data", "n_train"],
+        ["config", "seed"],
+        ["config", "method_kwargs", "lamda0"],
+    ]
+
+    results = extract_all_results(results, axes_keys)
+    ns, seeds, lamda0s = results.axes
+    k = 5
+    lamda0 = 0.01
+    m = 100
+    i_k = results.cv_k.index(k)
+    i_m = results.alo_m.index(m)
+    i_lamda0 = lamda0s.index(lamda0)
+
+    ns_filter = [500, 1000, 2000, 5000]
+    i_ns = [ns.index(n) for n in ns_filter]
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), dpi=300)
+    grouped_boxplot(
+        [
+            results.test_risks[i_ns, ..., i_lamda0],
+            results.cv_risks[i_ns, ..., i_lamda0, i_k],
+            results.alo_bks_risks[i_ns, ..., i_lamda0, i_m],
+            results.alo_poly_risks[i_ns, ..., i_lamda0, i_m],
+        ],
+        [f"n={n}" for n in ns_filter],
+        [
+            "Test error",
+            f"CV($K={k}$)",
+            f"BKS-ALO($m={m}$)",
+            f"RandALO($m={m}$)",
+        ],
+        ax=axes[0],
+    )
+
+    axes[0].set_title("Risk vs. Sample Size")
+    axes[0].set_ylabel("Squared Error")
+    axes[0].set_xlabel("Sample Size")
+
+    grouped_boxplot(
+        [
+            results.full_train_times[i_ns, ..., i_lamda0],
+            results.cv_times[i_ns, ..., i_lamda0, i_k],
+            results.alo_bks_times[i_ns, ..., i_lamda0, i_m],
+            results.alo_poly_times[i_ns, ..., i_lamda0, i_m],
+        ],
+        [f"n={n}" for n in ns_filter],
+        ["Training", f"CV($K={k}$)", f"BKS-ALO($m={m}$)", f"RandALO($m={m}$)"],
+        ax=axes[1],
+    )
+
+    axes[1].set_title("Time vs. Sample Size")
+    axes[1].set_ylabel("Time (s)")
+    axes[1].set_xlabel("Sample Size")
+    axes[1].set_yscale("log")
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join("figures", "first_diff_scaling_1.pdf"), bbox_inches="tight"
+    )
+
+
+def first_diff_scaling():
 
     # TODO: refactor!!!
 
@@ -590,6 +729,7 @@ def first_diff_scaling_1():
 collect_mapping = {
     "lasso_scaling_1": lasso_scaling_1,
     "lasso_scaling_normal": lasso_scaling_normal,
+    "lasso_bks_convergence": lasso_bks_convergence,
     "first_diff_scaling_1": first_diff_scaling_1,
 }
 
