@@ -239,10 +239,56 @@ def grouped_boxplot(data, x_labels, group_labels, ax=None, **kwargs):
     ax.legend(artists, group_labels)
 
 
-def scaling_plots(results, ks, ms, )
+def scaling_subplots(results):
+
+    markers = ["o", "s", "D", "v", "^", ">", "<", "p", "h", "H", "d", "P", "X"]
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    ns, lamda0s, seeds = results.axes
+    i_n = ns.index(5000)
+    i_k = results.cv_k.index(5)
+    i_m = results.alo_m.index(100)
+
+    cv_risks_rel = relative_error(results.cv_risks[..., i_k], results.gen_risks)
+
+    to_plot = [
+        (results.cv_times[i_n, :, :, i_k], cv_risks_rel[i_n, :, :], "CV"),
+        (
+            results.alo_exact_times[i_n, :, :],
+            relative_error(results.alo_exact_risks[...], results.gen_risks)[i_n, ...],
+            "ALO Exact",
+        ),
+        (
+            results.alo_bks_times[i_n, :, :, i_m],
+            relative_error(results.alo_bks_risks[..., i_m], results.gen_risks)[
+                i_n, ...
+            ],
+            "ALO BKS",
+        ),
+    ]
+
+    fig, axes = plt.subplots(1, 1, figsize=(5, 5))
+    ax = axes
+    for i, (times, risks, label) in enumerate(to_plot):
+        ax.plot(
+            np.median(times, axis=1),
+            np.median(risks, axis=1),
+            marker=markers[i],
+            color=colors[i],
+            label=label,
+        )
+        ax.set_yscale("log")
+        ax.set_xscale("log")
+        ax.legend()
+
+    plt.xlabel("Time (s)")
+    plt.ylabel("Relative Estimation Error")
+    plt.show()
 
 
 def lasso_scaling_1():
+
+    # TODO: refactor!!!
 
     results = load_results(os.path.join("lasso_scaling_1", "results"))
 
@@ -253,7 +299,9 @@ def lasso_scaling_1():
     ]
 
     results = extract_all_results(results, axes_keys)
-    ns, lamda0s, seeds = axes
+    ns, lamda0s, seeds = results.axes
+
+    scaling_subplots(results)
 
     k = 5
     m = 100
@@ -311,6 +359,8 @@ def lasso_scaling_1():
 
 
 def first_diff_scaling_1():
+
+    # TODO: refactor!!!
 
     results = load_results(os.path.join("first_diff_scaling_1", "results"))
 
@@ -400,6 +450,7 @@ def first_diff_scaling_1():
 
 collect_mapping = {
     "lasso_scaling_1": lasso_scaling_1,
+    "lasso_scaling_normal": lambda: None,
     "first_diff_scaling_1": first_diff_scaling_1,
 }
 
@@ -413,4 +464,6 @@ if __name__ == "__main__":
     for benchmark in benchmarks:
         if benchmark not in collect_mapping:
             raise ValueError(f"Unknown benchmark {benchmark}")
+
+        load_results(os.path.join(benchmark, "results"))
         collect_mapping[benchmark]()
