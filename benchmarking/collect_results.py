@@ -30,6 +30,8 @@ def load_results(results_dir):
 
 def deep_get(d, keys):
     for key in keys:
+        if key not in d:
+            return None
         d = d[key]
     return d
 
@@ -90,7 +92,7 @@ def extract_results(grouped_results, keys, depth=0):
             extract_results(result, keys, depth=depth + 1) for result in grouped_results
         ]
         if depth == 0:
-            results = np.asarray(results)
+            results = np.asarray(results, dtype=float)
         return results
 
 
@@ -199,7 +201,7 @@ def relative_error(a, b):
     return np.abs(a - b) / b
 
 
-def grouped_boxplot(data, x_labels, group_labels, ax=None, **kwargs):
+def grouped_boxplot(data, x_labels, group_labels, ax=None, legend=True, **kwargs):
 
     if ax is None:
         ax = plt.gca()
@@ -211,7 +213,19 @@ def grouped_boxplot(data, x_labels, group_labels, ax=None, **kwargs):
     x = np.arange(n_boxes)
 
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    hatches = ["", "///", "xxx", "ooo", "+++", "///", "xxx", "ooo", "+++"]
+    hatches = [
+        "",
+        "///",
+        "xxx",
+        "ooo",
+        "+++",
+        "\\\\\\",
+        "///",
+        "xxx",
+        "ooo",
+        "+++",
+        "\\\\\\",
+    ]
 
     for i, group_label in enumerate(group_labels):
         box_data = data[i]
@@ -226,7 +240,7 @@ def grouped_boxplot(data, x_labels, group_labels, ax=None, **kwargs):
         )
 
     ax.set_xticks(x)
-    ax.set_xticklabels(x_labels, rotation=45)
+    ax.set_xticklabels(x_labels)
     ax.set_xlim(-0.5, n_boxes - 0.5)
 
     artists = []
@@ -236,7 +250,8 @@ def grouped_boxplot(data, x_labels, group_labels, ax=None, **kwargs):
         )
         artists.append(artist)
 
-    ax.legend(artists, group_labels)
+    if legend:
+        ax.legend(artists, group_labels)
 
 
 def scaling_subplots(results):
@@ -284,6 +299,130 @@ def scaling_subplots(results):
     plt.xlabel("Time (s)")
     plt.ylabel("Relative Estimation Error")
     plt.show()
+
+
+def lasso_scaling_normal(results):
+
+    axes_keys = [
+        ["config", "data", "n_train"],
+        ["config", "seed"],
+    ]
+
+    results = extract_all_results(results, axes_keys)
+    ns, seeds = results.axes
+    cv_k = results.cv_k
+    alo_m = results.alo_m
+    k = 5
+    m1 = 30
+    m2 = 100
+    i_k = cv_k.index(k)
+    i_m1 = alo_m.index(m1)
+    i_m2 = alo_m.index(m2)
+
+    # First, plot only BKS
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), dpi=300)
+    grouped_boxplot(
+        [
+            results.test_risks,
+            results.cv_risks[..., i_k],
+            results.alo_bks_risks[..., i_m1],
+            results.alo_bks_risks[..., i_m2],
+        ],
+        [f"n={n}" for n in ns],
+        [
+            "Test error",
+            f"CV($K={k}$)",
+            f"BKS-ALO($m={m1}$)",
+            f"BKS-ALO($m={m2}$)",
+        ],
+        ax=axes[0],
+    )
+
+    axes[0].set_title("Risk vs. Sample Size")
+    axes[0].set_ylabel("Squared Error")
+    axes[0].set_xlabel("Sample Size")
+
+    grouped_boxplot(
+        [
+            results.full_train_times,
+            results.cv_times[..., i_k],
+            results.alo_bks_times[..., i_m1],
+            results.alo_bks_times[..., i_m2],
+        ],
+        [f"n={n}" for n in ns],
+        ["Training", f"CV($K={k}$)", f"BKS-ALO($m={m1}$)", f"BKS-ALO($m={m2}$)"],
+        ax=axes[1],
+    )
+
+    axes[1].set_title("Time vs. Sample Size")
+    axes[1].set_ylabel("Time (s)")
+    axes[1].set_xlabel("Sample Size")
+    axes[1].set_yscale("log")
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join("figures", "lasso_scaling_normal_bks.pdf"), bbox_inches="tight"
+    )
+
+    # Next, plot both BKS and Poly
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), dpi=300)
+    grouped_boxplot(
+        [
+            results.test_risks,
+            results.cv_risks[..., i_k],
+            results.alo_bks_risks[..., i_m1],
+            results.alo_bks_risks[..., i_m2],
+            results.alo_poly_risks[..., i_m1],
+            results.alo_poly_risks[..., i_m2],
+        ],
+        [f"n={n}" for n in ns],
+        [
+            "Test error",
+            f"CV($K={k}$)",
+            f"BKS-ALO($m={m1}$)",
+            f"BKS-ALO($m={m2}$)",
+            f"RandALO($m={m1}$)",
+            f"RandALO($m={m2}$)",
+        ],
+        ax=axes[0],
+    )
+
+    axes[0].set_title("Risk vs. Sample Size")
+    axes[0].set_ylabel("Squared Error")
+    axes[0].set_xlabel("Sample Size")
+
+    grouped_boxplot(
+        [
+            results.full_train_times,
+            results.cv_times[..., i_k],
+            results.alo_bks_times[..., i_m1],
+            results.alo_bks_times[..., i_m2],
+            results.alo_poly_times[..., i_m1],
+            results.alo_poly_times[..., i_m2],
+        ],
+        [f"n={n}" for n in ns],
+        [
+            "Training",
+            f"CV($K={k}$)",
+            f"BKS-ALO($m={m1}$)",
+            f"BKS-ALO($m={m2}$)",
+            f"RandALO($m={m1}$)",
+            f"RandALO($m={m2}$)",
+        ],
+        ax=axes[1],
+    )
+
+    axes[1].set_title("Time vs. Sample Size")
+    axes[1].set_ylabel("Time (s)")
+    axes[1].set_xlabel("Sample Size")
+    axes[1].set_yscale("log")
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join("figures", "lasso_scaling_normal_both.pdf"), bbox_inches="tight"
+    )
 
 
 def lasso_scaling_1():
@@ -450,7 +589,7 @@ def first_diff_scaling_1():
 
 collect_mapping = {
     "lasso_scaling_1": lasso_scaling_1,
-    "lasso_scaling_normal": lambda: None,
+    "lasso_scaling_normal": lasso_scaling_normal,
     "first_diff_scaling_1": first_diff_scaling_1,
 }
 
@@ -465,5 +604,5 @@ if __name__ == "__main__":
         if benchmark not in collect_mapping:
             raise ValueError(f"Unknown benchmark {benchmark}")
 
-        load_results(os.path.join(benchmark, "results"))
-        collect_mapping[benchmark]()
+        results = load_results(os.path.join(benchmark, "results"))
+        collect_mapping[benchmark](results)
