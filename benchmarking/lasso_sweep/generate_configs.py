@@ -8,7 +8,7 @@ with open("base_config.json") as f:
 
 os.makedirs("configs", exist_ok=True)
 
-for lamda0 in np.logspace(-3, 3, 31):
+for lamda0 in np.logspace(0.5, 1.5, 50):
 
     config["method_kwargs"]["lamda0"] = lamda0
 
