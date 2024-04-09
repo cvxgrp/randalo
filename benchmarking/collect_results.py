@@ -319,9 +319,11 @@ def lasso_scaling_normal(results):
     k = 5
     m1 = 30
     m2 = 100
+    m3 = 50
     i_k = cv_k.index(k)
     i_m1 = alo_m.index(m1)
     i_m2 = alo_m.index(m2)
+    i_m3 = alo_m.index(m3)
 
     # First, plot only BKS
 
@@ -376,19 +378,15 @@ def lasso_scaling_normal(results):
         [
             results.test_risks,
             results.cv_risks[..., i_k],
-            results.alo_bks_risks[..., i_m1],
-            results.alo_bks_risks[..., i_m2],
-            results.alo_poly_risks[..., i_m1],
-            results.alo_poly_risks[..., i_m2],
+            results.alo_bks_risks[..., i_m3],
+            results.alo_poly_risks[..., i_m3],
         ],
         [f"n={n}" for n in ns],
         [
             "Test error",
             f"CV($K={k}$)",
-            f"BKS-ALO($m={m1}$)",
-            f"BKS-ALO($m={m2}$)",
-            f"RandALO($m={m1}$)",
-            f"RandALO($m={m2}$)",
+            f"BKS-ALO($m={m3}$)",
+            f"RandALO($m={m3}$)",
         ],
         ax=axes[0],
     )
@@ -401,19 +399,15 @@ def lasso_scaling_normal(results):
         [
             results.full_train_times,
             results.cv_times[..., i_k],
-            results.alo_bks_times[..., i_m1],
-            results.alo_bks_times[..., i_m2],
-            results.alo_poly_times[..., i_m1],
-            results.alo_poly_times[..., i_m2],
+            results.alo_bks_times[..., i_m3],
+            results.alo_poly_times[..., i_m3],
         ],
         [f"n={n}" for n in ns],
         [
             "Training",
             f"CV($K={k}$)",
-            f"BKS-ALO($m={m1}$)",
-            f"BKS-ALO($m={m2}$)",
-            f"RandALO($m={m1}$)",
-            f"RandALO($m={m2}$)",
+            f"BKS-ALO($m={m3}$)",
+            f"RandALO($m={m3}$)",
         ],
         ax=axes[1],
     )
@@ -499,6 +493,41 @@ def lasso_bks_convergence(results):
     plt.show()
 
 
+def lasso_sweep(results):
+
+    axes_keys = [
+        ["config", "method_kwargs", "lamda0"],
+        ["config", "seed"],
+    ]
+
+    results = extract_all_results(results, axes_keys)
+    lamda0s, seeds = results.axes
+    k = 5
+    i_k = results.cv_k.index(k)
+    m = 50
+    i_m = results.alo_m.index(m)
+
+    plt.plot(lamda0s, np.median(results.gen_risks, axis=1), label="Theoretical risk")
+    plt.plot(lamda0s, np.median(results.test_risks, axis=1), label="Test error")
+    plt.plot(lamda0s, np.median(results.cv_risks[..., i_k], axis=1), label=f"CV(K={k})")
+    plt.plot(
+        lamda0s,
+        np.median(results.alo_bks_risks[..., i_m], axis=1),
+        label=f"BKS-ALO(m={m})",
+    )
+    plt.plot(
+        lamda0s,
+        np.median(results.alo_poly_risks[..., i_m], axis=1),
+        label=f"RandALO(m={m})",
+    )
+
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.legend()
+
+    plt.show()
+
+
 def lasso_scaling_1():
 
     # TODO: refactor!!!
@@ -569,6 +598,59 @@ def lasso_scaling_1():
 
     plt.tight_layout()
     plt.show()
+
+
+def logistic_comp(results):
+    general_comp(results, "logistic_comp", k=5, m=100)
+
+
+def categorical_comp(results):
+    general_comp(results, "categorical_comp", k=5, m=100)
+
+
+def general_comp(results, out_name, k=5, m=100):
+
+    axes_keys = [
+        ["config", "seed"],
+    ]
+
+    results = extract_all_results(results, axes_keys)
+    seeds = results.axes[0]
+    i_k = results.cv_k.index(k)
+    i_m = results.alo_m.index(m)
+
+    fig, axes = plt.subplots(1, 2, figsize=(5.5, 4), dpi=300)
+
+    grouped_boxplot(
+        [
+            results.test_risks,
+            results.cv_risks[..., i_k],
+            results.alo_bks_risks[..., i_m],
+            results.alo_poly_risks[..., i_m],
+        ],
+        [""],
+        ["Test error", "CV", "BKS-ALO", "RandALO"],
+        ax=axes[0],
+    )
+    axes[0].set_title("Risk")
+    axes[0].set_xticks([])
+
+    grouped_boxplot(
+        [
+            results.full_train_times,
+            results.cv_times[..., i_k],
+            results.alo_bks_times[..., i_m],
+            results.alo_poly_times[..., i_m],
+        ],
+        [""],
+        ["Training", "CV", "BKS-ALO", "RandALO"],
+        ax=axes[1],
+    )
+    axes[1].set_title("Time (s)")
+    axes[1].set_xticks([])
+
+    plt.tight_layout()
+    plt.savefig(os.path.join("figures", f"{out_name}.pdf"), bbox_inches="tight")
 
 
 def first_diff_scaling_1(results):
@@ -727,9 +809,12 @@ def first_diff_scaling():
 
 
 collect_mapping = {
+    "categorical_comp": categorical_comp,
+    "lasso_bks_convergence": lasso_bks_convergence,
     "lasso_scaling_1": lasso_scaling_1,
     "lasso_scaling_normal": lasso_scaling_normal,
-    "lasso_bks_convergence": lasso_bks_convergence,
+    "lasso_sweep": lasso_sweep,
+    "logistic_comp": logistic_comp,
     "first_diff_scaling_1": first_diff_scaling_1,
 }
 
