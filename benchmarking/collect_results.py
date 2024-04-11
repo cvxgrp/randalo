@@ -437,18 +437,18 @@ def lasso_bks_convergence(results):
     ms_recip = np.concatenate([1 / ms[:-1], [0.0]])
 
     plt.plot(1 / ms, np.median(results.alo_bks_risks, axis=0).T, label="BKS-ALO")
-    plt.plot(1 / ms, np.median(results.alo_poly_risks, axis=0).T, "-.", label="RandALO")
+    #plt.plot(1 / ms, np.median(results.alo_poly_risks, axis=0).T, "-.", label="RandALO")
 
     plt.fill_between(
         ms_recip,
         *np.percentile(results.alo_bks_risks, [25, 75], axis=0),
         alpha=0.2,
     )
-    plt.fill_between(
-        ms_recip,
-        *np.percentile(results.alo_poly_risks, [25, 75], axis=0),
-        alpha=0.2,
-    )
+    #plt.fill_between(
+    #   ms_recip,
+    #   *np.percentile(results.alo_poly_risks, [25, 75], axis=0),
+    #   alpha=0.2,
+    #)
 
     plt.axhline(np.median(results.test_risks), color="black", linestyle="--")
     # fill between interquartile range of test risk
@@ -472,20 +472,79 @@ def lasso_bks_convergence(results):
             alpha=0.2,
         )
 
-    ms_filter = np.asarray([m for m in ms if m >= 25 and m <= 50])
-    i_ms = [results.alo_m.index(m) for m in ms_filter]
+    #ms_filter = np.asarray([m for m in ms if m >= 25 and m <= 50])
+    #i_ms = [results.alo_m.index(m) for m in ms_filter]
 
-    risks = np.median(results.alo_bks_risks[:, i_ms], axis=0)
+    inv_ms = np.array([0.04      , 0.04      , 0.03846154, 0.03846154, 0.03703704,
+                       0.03703704, 0.03571429, 0.03571429, 0.03448276, 0.03448276,
+                       0.03333333, 0.03333333, 0.03225806, 0.03225806, 0.03125   ,
+                       0.03125   , 0.03030303, 0.03030303, 0.02941176, 0.02941176,
+                       0.02857143, 0.02857143, 0.02777778, 0.02777778, 0.02702703,
+                       0.02702703, 0.02631579, 0.02631579, 0.02564103, 0.02564103,
+                       0.025     , 0.025     , 0.02439024, 0.02439024, 0.02380952,
+                       0.02380952, 0.02325581, 0.02325581, 0.02272727, 0.02272727,
+                       0.02222222, 0.02222222, 0.02173913, 0.02173913, 0.0212766 ,
+                       0.0212766 , 0.02083333, 0.02083333, 0.02040816, 0.02      ])
+
+    risks = np.array([3498.54348982, 3523.03338677, 3499.892891  , 3512.83093777,
+                      3466.28244952, 3477.67107397, 3471.00952082, 3482.95405323,
+                      3477.99106963, 3470.18876317, 3487.27051889, 3507.85561273,
+                      3462.8255875 , 3483.77628774, 3447.1151502 , 3466.61032851,
+                      3461.12945087, 3439.49563918, 3444.53416898, 3423.68149226,
+                      3443.14867226, 3454.15553333, 3441.09913286, 3421.56535423,
+                      3430.39672024, 3431.31171564, 3439.73497225, 3438.51568312,
+                      3438.80234594, 3427.48612042, 3415.04565812, 3442.95227054,
+                      3412.95298509, 3419.79949664, 3416.64411817, 3425.05715343,
+                      3419.45085793, 3407.72558733, 3410.82475155, 3414.77051308,
+                      3423.45816518, 3421.52255356, 3392.004082  , 3408.92798226,
+                      3415.76117281, 3405.41355706, 3405.37847544, 3407.77875578,
+                      3405.28154779, 3400.74429551]) / 5000
+    w = np.array([3292.98379179, 5329.12757204]) / 5000
 
     plt.scatter(
-        1 / ms_filter,
-        np.median(results.alo_bks_risks[:, i_ms], axis=0),
+        inv_ms,
+        risks,
+        label='subsampled-sketch risks'
+    )
+    plt.plot(
+        np.linspace(0, 0.1),
+        np.vander(np.linspace(0, 0.1), 2, True) @ w,
+        label='$\hat{R}_0 + \hat{R}_1 / m$'
     )
 
-    plt.xlim(xlim)
-    plt.ylim(ylim)
+    """
+    risks2 = np.array(
+                 [3397.34771693, 3404.29966769, 3398.08577415, 3382.13835186,
+                  3411.48750507, 3403.72133267, 3377.29187079, 3374.96243406,
+                  3401.34065039, 3387.74458755, 3397.01563313, 3355.18600619,
+                  3385.97613629, 3396.00171822, 3392.19923611, 3369.49146275,
+                  3387.12345259, 3352.85233383, 3368.07286225, 3356.16275025,
+                  3330.18840125, 3353.53887847, 3334.69174004, 3330.95607431,
+                  3339.93836132, 3329.02531471, 3340.34686949, 3367.89827597,
+                  3334.46692016, 3357.2325125 , 3335.31413061, 3337.9627052 ,
+                  3335.074799  , 3313.70698876, 3323.48381804, 3333.17909516,
+                  3315.68539049, 3343.88620567, 3316.46477452, 3320.06683743,
+                  3326.21291554, 3322.79253465, 3332.70922716, 3311.90864988,
+                  3317.9416406 , 3327.93128793, 3320.6523137 , 3317.04343804,
+                  3320.72311414, 3312.36866818]) / 5000
+    w2 = np.array([3216.47397074, 4820.6113051 ]) / 5000
 
-    plt.title("Convergence of Risk Estimate in $m$")
+    plt.scatter(
+        inv_ms,
+        risks2,
+        label='subsampled-sketch risks'
+    )
+    plt.plot(
+        np.linspace(0, 0.1),
+        np.vander(np.linspace(0, 0.1), 2, True) @ w2,
+        label='$\hat{R}_0 + \hat{R}_1 / m$'
+    )
+    """
+
+    plt.xlim(np.asarray([0, 0.06]))
+    plt.ylim(np.asarray([0.638, 0.72]))
+
+    #plt.title("Convergence of Risk Estimate in $m$")
     plt.xlabel("$1/m$")
     plt.ylabel("Risk estimate")
     plt.legend()
