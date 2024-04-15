@@ -5,8 +5,10 @@ from scipy import sparse
 from scipy.sparse.linalg import LinearOperator as ScipyLinearOperator, minres
 import torch
 
-from sklearn.linear_model import Lasso, LogisticRegression
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.exceptions import NotFittedError
+from sklearn.linear_model import Lasso, LogisticRegression
+
 
 import linops as lo
 from linops import LinearOperator
@@ -188,7 +190,7 @@ class SeparableRegularizerJacobian(LinearOperator):
             Z = torch.linalg.ldl_solve(self.LD, self.pivots, B)
         # sparse X case:
         else:
-            B = self.X_mask.T @ A.numpy()
+            B = self.X_mask.T @ A.detach().numpy()
             Z = minres(self.H, B)[0]
             need_squeeze = False
 
@@ -276,6 +278,46 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
     @property
     def diag(self):
         return torch.diag(self @ torch.eye(self.shape[0]))
+
+
+class RandomForestRegressorJacobian(LinearOperator):
+
+    supports_operator_matrix = True
+
+    def __init__(self, forest, X, dtype, device="cpu"):
+
+        self._shape = (X.shape[0], X.shape[0])
+        self.dtype = dtype
+        self.device = device
+
+        J = np.zeros((X.shape[0], X.shape[0]))
+        for est in forest.estimators_:
+            tree = est.tree_
+            S = sparse.csr_array(
+                (
+                    np.ones(X.shape[0]),
+                    tree.apply(X.astype(np.float32)),
+                    np.arange(X.shape[0] + 1),
+                ),
+                shape=(X.shape[0], tree.node_count),
+            )
+            denom = S.sum(axis=0)[None, :]
+            # Avoid division by zero
+            denom[denom == 0] = 1
+            J += (S / denom) @ S.T
+        J /= len(forest.estimators_)
+
+        self.J = sparse.csr_array(J)
+
+    def _matmul_impl(self, A):
+        return torch.as_tensor(self.J @ A.detach().numpy())
+
+    def todense(self):
+        return self.J.toarray()
+
+    @property
+    def diag(self):
+        return torch.as_tensor(self.J.diagonal())
 
 
 class SeparableRegularizerMixin(ABC):
@@ -470,3 +512,28 @@ class LogisticModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
     @staticmethod
     def loss_fun(y, y_hat):
         return torch.log(1 + torch.exp(-y * y_hat))
+
+
+class RandomForestRegressorModel(ALOModel):
+
+    def __init__(self, sklearn_rf_kwargs):
+        super().__init__()
+        self.sklearn_rf_kwargs = sklearn_rf_kwargs
+        self.sklearn_rf_kwargs["bootstrap"] = True
+        self.sklearn_rf_kwargs["oob_score"] = True
+
+    def get_new_model(self):
+        return RandomForestRegressor(**self.sklearn_rf_kwargs)
+
+    def _compute_jac(self, device=None):
+        return RandomForestRegressorJacobian(
+            self.model, self._X.detach().numpy(), self._X.dtype, self._X.device
+        )
+
+    def oob_prediction(self):
+        self._fitted_check()
+        return self.model.oob_prediction_
+
+    @staticmethod
+    def loss_fun(y, y_hat):
+        return (y - y_hat) ** 2 / 2

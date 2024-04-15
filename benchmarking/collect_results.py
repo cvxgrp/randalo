@@ -432,27 +432,47 @@ def lasso_bks_convergence(results):
     results = extract_all_results(results, axes_keys)
     (seeds,) = results.axes
 
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
     ms = np.asarray(results.alo_m)
-    ms_recip = 1 / ms
-    ms_recip = np.concatenate([1 / ms[:-1], [0.0]])
+    # ms_recip = ms
+    # ms_recip = np.concatenate([1 / ms[:-1], [0.0]])
 
-    plt.plot(1 / ms, np.median(results.alo_bks_risks, axis=0).T, label="BKS-ALO")
-    plt.plot(1 / ms, np.median(results.alo_poly_risks, axis=0).T, "-.", label="RandALO")
+    plt.plot(
+        ms,
+        np.median(results.alo_bks_risks, axis=0).T,
+        "--",
+        color=color_cycle[0],
+        label="BKS-ALO",
+    )
+    plt.plot(
+        ms,
+        np.median(results.alo_poly_risks, axis=0).T,
+        color=color_cycle[1],
+        label="RandALO",
+    )
 
     plt.fill_between(
-        ms_recip,
+        ms,
         *np.percentile(results.alo_bks_risks, [25, 75], axis=0),
+        color=color_cycle[0],
         alpha=0.2,
     )
     plt.fill_between(
-        ms_recip,
+        ms,
         *np.percentile(results.alo_poly_risks, [25, 75], axis=0),
+        color=color_cycle[1],
         alpha=0.2,
     )
 
-    plt.axhline(np.median(results.test_risks), color="black", linestyle="--")
+    plt.axhline(
+        np.median(results.test_risks), color="black", linestyle=":", label="Test error"
+    )
     # fill between interquartile range of test risk
-    xlim = np.asarray([0, np.max(ms_recip)])
+    # xlim = np.asarray([0, np.max(ms_recip)])
+    # plt.xscale("log")
+    xlim = np.asarray([np.min(ms), np.max(ms)])
+    xlim = np.asarray([np.min(ms), 300])
     plt.fill_between(
         xlim,
         *np.percentile(results.test_risks, [25, 75])[:, None],
@@ -460,37 +480,18 @@ def lasso_bks_convergence(results):
         alpha=0.2,
     )
     ylim = plt.ylim()
-    aspect_ratio = (xlim[1] - xlim[0]) / (ylim[1] - ylim[0])
-
-    for angle in np.linspace(0, np.pi / 2, 9)[1:-1]:
-        plt.plot(
-            xlim,
-            np.median(results.alo_bks_risks[:, -1])
-            + np.tan(angle) * (xlim - xlim[0]) / aspect_ratio,
-            color="black",
-            linestyle=":",
-            alpha=0.2,
-        )
-
-    ms_filter = np.asarray([m for m in ms if m >= 25 and m <= 50])
-    i_ms = [results.alo_m.index(m) for m in ms_filter]
-
-    risks = np.median(results.alo_bks_risks[:, i_ms], axis=0)
-
-    plt.scatter(
-        1 / ms_filter,
-        np.median(results.alo_bks_risks[:, i_ms], axis=0),
-    )
 
     plt.xlim(xlim)
     plt.ylim(ylim)
 
-    plt.title("Convergence of Risk Estimate in $m$")
-    plt.xlabel("$1/m$")
+    plt.title("Convergence to ALO")
+    plt.xlabel("Number of matvecs $m$")
     plt.ylabel("Risk estimate")
     plt.legend()
 
-    plt.show()
+    plt.savefig(
+        os.path.join("figures", "lasso_bks_convergence.pdf"), bbox_inches="tight"
+    )
 
 
 def lasso_sweep(results):
@@ -507,105 +508,97 @@ def lasso_sweep(results):
     m = 50
     i_m = results.alo_m.index(m)
 
-    plt.plot(lamda0s, np.median(results.gen_risks, axis=1), label="Theoretical risk")
-    plt.plot(lamda0s, np.median(results.test_risks, axis=1), label="Test error")
-    plt.plot(lamda0s, np.median(results.cv_risks[..., i_k], axis=1), label=f"CV(K={k})")
-    plt.plot(
-        lamda0s,
-        np.median(results.alo_bks_risks[..., i_m], axis=1),
-        label=f"BKS-ALO(m={m})",
-    )
-    plt.plot(
-        lamda0s,
-        np.median(results.alo_poly_risks[..., i_m], axis=1),
-        label=f"RandALO(m={m})",
-    )
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    markers = ["o", "s", "D", "v", "^", ">", "<", "p", "h", "H", "d", "P", "X"]
 
-    plt.xscale("log")
-    plt.yscale("log")
-    plt.legend()
-
-    plt.show()
-
-
-def lasso_scaling_1():
-
-    # TODO: refactor!!!
-
-    results = load_results(os.path.join("lasso_scaling_1", "results"))
-
-    axes_keys = [
-        ["config", "data", "n_train"],
-        ["config", "method_kwargs", "lamda0"],
-        ["config", "seed"],
+    data = [
+        results.test_risks,
+        results.cv_risks[..., i_k],
+        results.alo_bks_risks[..., i_m],
+        results.alo_poly_risks[..., i_m],
+    ]
+    labels = [
+        "Test error",
+        f"CV(K={k})",
+        f"BKS-ALO(m={m})",
+        f"RandALO(m={m})",
     ]
 
-    results = extract_all_results(results, axes_keys)
-    ns, lamda0s, seeds = results.axes
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), dpi=300)
 
-    scaling_subplots(results)
+    for i, (label, color) in enumerate(zip(labels, color_cycle)):
+        # shift markevery by 1 to avoid overlapping markers
+        markevery = (i, len(data))
+        axes[0].errorbar(
+            lamda0s,
+            np.mean(data[i], axis=1),
+            yerr=np.std(data[i], axis=1),
+            label=label,
+            color=color,
+            marker=markers[i],
+            markevery=markevery,
+            errorevery=markevery,
+            capsize=2,
+        )
 
-    k = 5
-    m = 100
-    lamda0 = 1.0
-    ik = cv_k.index(k)
-    im = alo_m.index(m)
-    ilamda0 = lamda0s.index(lamda0)
+    axes[0].set_xscale("log")
+    axes[0].set_title("Risk")
+    axes[0].set_ylabel("Squared Error")
+    axes[0].set_xlabel("Regularization parameter $\\lambda$")
+    axes[0].legend()
 
-    test_rel = relative_error(test_risks, gen_risks)[:, ilamda0, :]
-    cv_rel = relative_error(cv_risks[..., ik], gen_risks)[:, ilamda0, :]
-    alo_exact_rel = relative_error(alo_exact_risks, gen_risks)[:, ilamda0, :]
-    alo_bks_rel = relative_error(alo_bks_risks[..., im], gen_risks)[:, ilamda0, :]
-    alo_poly_rel = relative_error(alo_poly_risks[..., im], gen_risks)[:, ilamda0, :]
+    data = [
+        results.full_train_times,
+        results.cv_times[..., i_k],
+        results.alo_bks_times[..., i_m],
+        results.alo_poly_times[..., i_m],
+    ]
+    labels = [
+        "Training",
+        f"CV(K={k})",
+        f"BKS-ALO(m={m})",
+        f"RandALO(m={m})",
+    ]
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    for i, (label, color) in enumerate(zip(labels, color_cycle)):
+        # shift markevery by 1 to avoid overlapping markers
+        markevery = (i, len(data))
+        axes[1].errorbar(
+            lamda0s,
+            np.mean(data[i], axis=1),
+            yerr=np.std(data[i], axis=1),
+            label=label,
+            color=color,
+            marker=markers[i],
+            markevery=markevery,
+            errorevery=markevery,
+            capsize=2,
+        )
 
-    normalize_factor = 1 / np.median(cv_rel, axis=1)[:, None]
-    grouped_boxplot(
-        [
-            cv_rel * normalize_factor,
-            alo_exact_rel * normalize_factor,
-            alo_bks_rel * normalize_factor,
-            alo_poly_rel * normalize_factor,
-        ],
-        [f"n={n}" for n in ns],
-        [f"cv_{k}", "alo_exact", f"alo_{m}_bks", f"alo_{m}_poly"],
-        ax=axes[0],
-    )
-    axes[0].axhline(1, color="black", linestyle="--")
-    axes[0].set_title(f"Lasso Error Scaling for $\\lambda_0={lamda0}$")
-    axes[0].set_ylabel("Relative Estimation Error (normalized by CV median)")
-
-    # normalize_factor = 1 / np.median(cv_times[:, ilamda0, :, ik], axis=1)[:, None]
-    normalize_factor = 1 / np.median(full_train_times[:, ilamda0, :], axis=1)[:, None]
-    grouped_boxplot(
-        [
-            cv_times[:, ilamda0, :, ik] * normalize_factor,
-            alo_exact_times[:, ilamda0, :] * normalize_factor,
-            alo_bks_times[:, ilamda0, :, im] * normalize_factor,
-            alo_poly_times[:, ilamda0, :, im] * normalize_factor,
-        ],
-        [f"n={n}" for n in ns],
-        [f"cv_{k}", "alo_exact", f"alo_{m}_bks", f"alo_{m}_poly"],
-        ax=axes[1],
-    )
-    axes[1].axhline(1, color="black", linestyle="--")
-    solve_time = np.median(full_train_times[-1, ilamda0, :] * normalize_factor[-1, :])
-    # axes[1].axhline(solve_time, color="black", linestyle=":")
-    axes[1].set_title(f"Lasso Time Scaling for $\\lambda_0={lamda0}$")
-    axes[1].set_ylabel("Time (normalized by CV median)")
+    axes[1].set_xscale("log")
     axes[1].set_yscale("log")
+    axes[1].set_title("Time (s)")
+    axes[1].set_xlabel("Regularization parameter $\\lambda$")
+    axes[1].legend()
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig(os.path.join("figures", "lasso_sweep.pdf"), bbox_inches="tight")
+
+
+def categorical_comp(results):
+    general_comp(results, "categorical_comp", k=5, m=100)
 
 
 def logistic_comp(results):
     general_comp(results, "logistic_comp", k=5, m=100)
 
 
-def categorical_comp(results):
-    general_comp(results, "categorical_comp", k=5, m=100)
+def multivariate_t_comp(results):
+    general_comp(results, "multivariate_t_comp", k=5, m=100)
+
+
+def random_forest_comp(results):
+    general_comp(results, "random_forest_comp", k=5, m=100)
 
 
 def general_comp(results, out_name, k=5, m=100):
@@ -619,7 +612,7 @@ def general_comp(results, out_name, k=5, m=100):
     i_k = results.cv_k.index(k)
     i_m = results.alo_m.index(m)
 
-    fig, axes = plt.subplots(1, 2, figsize=(5.5, 4), dpi=300)
+    fig, axes = plt.subplots(1, 2, figsize=(5, 4), dpi=300)
 
     grouped_boxplot(
         [
@@ -629,7 +622,7 @@ def general_comp(results, out_name, k=5, m=100):
             results.alo_poly_risks[..., i_m],
         ],
         [""],
-        ["Test error", "CV", "BKS-ALO", "RandALO"],
+        ["Test error", f"CV(K={k})", f"BKS-ALO(m={m})", f"RandALO(m={m})"],
         ax=axes[0],
     )
     axes[0].set_title("Risk")
@@ -643,7 +636,7 @@ def general_comp(results, out_name, k=5, m=100):
             results.alo_poly_times[..., i_m],
         ],
         [""],
-        ["Training", "CV", "BKS-ALO", "RandALO"],
+        ["Training", f"CV(K={k})", f"BKS-ALO(m={m})", f"RandALO(m={m})"],
         ax=axes[1],
     )
     axes[1].set_title("Time (s)")
@@ -811,10 +804,11 @@ def first_diff_scaling():
 collect_mapping = {
     "categorical_comp": categorical_comp,
     "lasso_bks_convergence": lasso_bks_convergence,
-    "lasso_scaling_1": lasso_scaling_1,
     "lasso_scaling_normal": lasso_scaling_normal,
     "lasso_sweep": lasso_sweep,
     "logistic_comp": logistic_comp,
+    "multivariate_t_comp": multivariate_t_comp,
+    "random_forest_comp": random_forest_comp,
     "first_diff_scaling_1": first_diff_scaling_1,
 }
 

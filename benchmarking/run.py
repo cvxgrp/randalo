@@ -16,7 +16,13 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
 
 from alogcv.alo import ALOExact, ALORandomized, GCV
-from alogcv.models import LinearMixin, LassoModel, FirstDifferenceModel, LogisticModel
+from alogcv.models import (
+    LinearMixin,
+    LassoModel,
+    FirstDifferenceModel,
+    LogisticModel,
+    RandomForestRegressorModel,
+)
 
 
 class Timer(object):
@@ -244,16 +250,53 @@ def get_data(data_config, rng):
             lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
         )
 
+    elif data_config["src"] == "multivariate_t_sparse_awgn":
+        n_train, n_test, p, nu, s, sigma = extract_dict_keys(
+            data_config, ["n_train", "n_test", "p", "nu", "s", "sigma"]
+        )
+        X_train = rng.normal(size=(n_train, p)) * np.sqrt(
+            (nu - 2) / rng.chisquare(nu, size=n_train)[:, None]
+        )
+        X_test = rng.normal(size=(n_test, p)) * np.sqrt(
+            (nu - 2) / rng.chisquare(nu, size=n_test)[:, None]
+        )
+
+        beta = np.zeros(p)
+        beta[:s] = rng.normal(size=s) / np.sqrt(s)
+
+        y_train = X_train @ beta + rng.normal(scale=sigma, size=n_train)
+        y_test = X_test @ beta + rng.normal(scale=sigma, size=n_test)
+
+        gen_risk_linear = (
+            lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
+        )
+
+    elif data_config["src"] == "categorical_sparse_awgn":
+        n_train, n_test, p, n_categories, s, sigma = extract_dict_keys(
+            data_config, ["n_train", "n_test", "p", "n_categories", "s", "sigma"]
+        )
+        X0_train = rng.integers(0, n_categories, size=(n_train, p))
+        onehot = OneHotEncoder()
+        X_train = onehot.fit_transform(X0_train)
+        X0_test = rng.integers(0, n_categories, size=(n_test, p))
+        X_test = onehot.transform(X0_test)
+        beta = np.zeros(n_categories * p)
+        nz_idx = rng.choice(p, s, replace=False)
+        beta[nz_idx] = rng.normal(size=s) * np.sqrt(n_categories / s)
+        y_train = X_train @ beta + rng.normal(scale=sigma, size=n_train)
+        y_test = X_test @ beta + rng.normal(scale=sigma, size=n_test)
+
+        gen_risk_linear = None
+
     elif data_config["src"] == "iid_normal_logistic_sparse":
         n_train, n_test, p, s, rho = extract_dict_keys(
             data_config, ["n_train", "n_test", "p", "s", "rho"]
         )
-        x_mean = rng.normal(size=(1, p))
-        X_train = rng.normal(size=(n_train, p)) + x_mean / np.sqrt(s) * 2
-        X_test = rng.normal(size=(n_test, p)) + x_mean / np.sqrt(s) * 2
+        X_train = rng.normal(size=(n_train, p))
+        X_test = rng.normal(size=(n_test, p))
         beta = np.zeros(p)
-        # beta[:s] = rng.normal(size=s) / np.sqrt(s)
-        beta[:s] = x_mean[0, :s] / np.sqrt(s)
+        beta[:s] = rng.normal(size=s) / np.sqrt(s)
+        # beta[:s] = x_mean[0, :s] / np.sqrt(s)
 
         prob = 1 / (1 + np.exp(-X_train @ beta * rho))
         y_train = (rng.uniform(size=n_train) < prob).astype(float) * 2 - 1
@@ -273,6 +316,28 @@ def get_data(data_config, rng):
         beta[:s] = rng.normal(size=s) / np.sqrt(s)
         y_train = X_train @ beta + rng.normal(scale=sigma, size=n_train)
         y_test = X_test @ beta + rng.normal(scale=sigma, size=n_test)
+
+        gen_risk_linear = (
+            lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
+        )
+
+    if data_config["src"] == "iid_normal_sparse_poly_awgn":
+        n_train, n_test, p, ord, s, sigma = extract_dict_keys(
+            data_config, ["n_train", "n_test", "p", "ord", "s", "sigma"]
+        )
+        X_train = rng.normal(size=(n_train, p))
+        X_test = rng.normal(size=(n_test, p))
+
+        X_train_poly = np.zeros((n_train, s))
+        X_test_poly = np.zeros((n_test, s))
+        for i in range(s):
+            poly_factors = rng.integers(0, p, size=ord)
+            X_train_poly[:, i] = np.prod(X_train[:, poly_factors], axis=1)
+            X_test_poly[:, i] = np.prod(X_test[:, poly_factors], axis=1)
+
+        beta = rng.normal(size=s) / np.mean(np.linalg.norm(X_train_poly, axis=1))
+        y_train = X_train_poly @ beta + rng.normal(scale=sigma, size=n_train)
+        y_test = X_test_poly @ beta + rng.normal(scale=sigma, size=n_test)
 
         gen_risk_linear = (
             lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
@@ -323,6 +388,9 @@ def model_lookup(config):
         elif method_kwargs["penalty"] == "l2":
             lamda = method_kwargs.pop("lamda0")
         return LogisticModel(lamda, sklearn_logistic_kwargs=method_kwargs)
+
+    if method == "random-forest":
+        return RandomForestRegressorModel(sklearn_rf_kwargs=method_kwargs)
 
 
 def risk_lookup(risk_name):
@@ -483,6 +551,10 @@ if __name__ == "__main__":
         )
         results["gcv_risk"] = gcv.eval_risk(risk_fun) / n
     results["gcv_time"] = timer.elapsed
+
+    if config["method"] == "random-forest":
+        log("Computing OOB risk...")
+        results["oob_risk"] = sum(risk_fun(y_train, model.oob_prediction())) / n
 
     # Save the results
     with open(args.results_file, "w") as f:

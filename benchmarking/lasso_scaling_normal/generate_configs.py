@@ -13,6 +13,7 @@ os.makedirs("configs", exist_ok=True)
 
 for scale in [100, 500, 2000]:
     config["data"]["n_train"] = n0 * scale
+    config["data"]["n_test"] = n0 * scale
     config["data"]["p"] = p = p0 * scale
     config["data"]["s"] = s0 * scale
 

@@ -1,0 +1,23 @@
+{
+    "id": "test",
+    "seed": 0,
+    "device": "cpu",
+    "data": {
+        "src": "categorical_sparse_awgn",
+        "n_train": 2000,
+        "n_test": 10000,
+        "p": 2000,
+        "n_categories": 10,
+        "s": 200,
+        "sigma": 0.1
+    },
+    "method": "lasso",
+    "method_kwargs": {
+        "lamda0": 0.3,
+        "selection": "random"
+    },
+    "risk": "squared_error",
+    "cv_k": [5],
+    "alo_exact": false,
+    "alo_m": [10, 30, 50, 100, 300] 
+}

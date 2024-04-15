@@ -54,12 +54,12 @@ class ALOBase(ABC):
         self.a_c = self._dloss_dy_hat / self._d2loss_dy_hat2
         self.c_b = self._d2loss_dy_hat2 / self._d2loss_dboth
 
-    def transform_jac(self, diag_jac: Tensor) -> Tensor:
+    def transform_jac_linop(self, jac: LinearOperator) -> LinearOperator:
         """Transform the Jacobian into a generic form.
 
-        For general losses, the Jacobian may not cover the range from 0 to 1.
+        For general losses, the Jacobian diagonals be constrained within [0, 1).
         This function transforms the Jacobian into a generic form that does
-        cover the range from 0 to 1 by eliminating loss-specific terms.
+        cover the range from 0 to 1 by eliminating some loss-specific terms.
 
         Parameters
         ----------
@@ -72,7 +72,7 @@ class ALOBase(ABC):
         Tensor
             The transformed diagonal of the Jacobian.
         """
-        return -diag_jac * self.c_b.expand_as(diag_jac)
+        return jac @ lo.DiagonalOperator(-self.c_b)
 
     def y_tilde_from_transformed_jac(self, transformed_jac: Tensor) -> Tensor:
         """Compute the corrected predictions using the transformed Jacobian.
@@ -107,7 +107,7 @@ class ALOBase(ABC):
             The corrected predictions.
         """
 
-        return self.y_tilde_from_transformed_jac(self.transform_jac(diag_jac))
+        return self.y_tilde_from_transformed_jac(-diag_jac * self.c_b)
 
     def joint_vars(self) -> Tuple[Tensor, Tensor]:
         """Return the true response and corrected predictions."""
@@ -216,7 +216,7 @@ class ALORandomized(RandomizedMixin, ALOBase):
             The random number generator.
         """
         super().__init__(loss_fun, y, y_hat)
-        self._jac = jac
+        self._jac = self.transform_jac_linop(jac)
 
         self._transformed_diag_jac_estims = None
         self.m = 0
@@ -249,7 +249,7 @@ class ALORandomized(RandomizedMixin, ALOBase):
         matvecs, Omega = self._get_matvecs(m - self.m)
 
         # update the diagonal Jacobian estimates
-        transformed_diag_jac_estims = self.transform_jac((matvecs * Omega).T).T
+        transformed_diag_jac_estims = matvecs * Omega
         if self._transformed_diag_jac_estims is None:
             self._transformed_diag_jac_estims = transformed_diag_jac_estims
         else:
@@ -331,17 +331,17 @@ class ALORandomized(RandomizedMixin, ALOBase):
             )
 
             # compute the risk estimate
-            risks[i, :] = (
-                risk(self._y, self.y_tilde_from_transformed_jac(diag_jac)).numpy()
-            )
+            risks[i, :] = risk(
+                self._y, self.y_tilde_from_transformed_jac(diag_jac)
+            ).numpy()
 
         cov = self.n * np.cov(risks)
         # return the constant term of the polynomial fit
         self._ms = ms
         self._risks = risks.sum(axis=1)
-        #coefs, self._res_m_to_risk_fit = utils.robust_poly_fit(
-            #1 / ms**power, self._risks, order
-        #)
+        # coefs, self._res_m_to_risk_fit = utils.robust_poly_fit(
+        # 1 / ms**power, self._risks, order
+        # )
         risk, stddev = utils.weighted_lstsq_fit(1 / ms**power, self._risks, order, cov)
         self.error_estimate = stddev
 
@@ -383,7 +383,7 @@ class GCV(RandomizedMixin, ALOBase):
         """
         super().__init__(loss_fun, y, y_hat)
 
-        self._jac = jac
+        self._jac = self.transform_jac_linop(jac)
         self.m = m
 
         if generator is None:
@@ -395,7 +395,7 @@ class GCV(RandomizedMixin, ALOBase):
 
         # apply Hutchinson's method to estimate the trace of the normalized Jacobian
         matvecs, Omega = self._get_matvecs(m)
-        transformed_diag_jac_estim = self.transform_jac((matvecs * Omega).T).mean(dim=0)
+        transformed_diag_jac_estim = (matvecs * Omega).mean(dim=1)
         tr_hat = transformed_diag_jac_estim.sum()
         tr_hat.clamp_(min=1e-12, max=self.n * (1 - 1e-12))
 
