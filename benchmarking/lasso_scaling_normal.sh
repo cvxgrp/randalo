@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=16GB
-#SBATCH --partition=candes,normal,hns
+#SBATCH --partition=candes,normal
 #SBATCH --array=1-300
 
 BASE_DIR=$HOME/alo/benchmarking/lasso_scaling_normal
