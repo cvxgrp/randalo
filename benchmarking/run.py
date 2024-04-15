@@ -538,6 +538,7 @@ if __name__ == "__main__":
                 results[f"alo_{m}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / n
             results[f"alo_{m}_poly_risk_time"] = timer.elapsed
             results[f"alo_{m}_poly_risk_error"] = alo.error_estimate / n
+
     else:
         for bks_seed in config["bks_seeds"]:
             bks_gen = torch.Generator()

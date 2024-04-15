@@ -397,10 +397,10 @@ def lasso_scaling_normal(results):
 
     grouped_boxplot(
         [
-            results.full_train_times,
-            results.cv_times[..., i_k],
-            results.alo_bks_times[..., i_m3],
-            results.alo_poly_times[..., i_m3],
+            results.full_train_times / results.full_train_times,
+            results.cv_times[..., i_k] / results.full_train_times,
+            results.alo_bks_times[..., i_m3] / results.full_train_times,
+            results.alo_poly_times[..., i_m3] / results.full_train_times,
         ],
         [f"n={n}" for n in ns],
         [
@@ -415,7 +415,7 @@ def lasso_scaling_normal(results):
     axes[1].set_title("Time vs. Sample Size")
     axes[1].set_ylabel("Time (s)")
     axes[1].set_xlabel("Sample Size")
-    axes[1].set_yscale("log")
+    # axes[1].set_yscale("log")
 
     plt.tight_layout()
     plt.savefig(
@@ -593,7 +593,7 @@ def lasso_poly_scatter(results):
     plt.plot(
         np.linspace(0, 0.1),
         np.vander(np.linspace(0, 0.1), 2, True) @ w,
-        label="$\hat{R}_0 + \hat{R}_1 / m$",
+        label=r"$\hat{R}_0 + \hat{R}_1 / m$",
     )
 
     """
