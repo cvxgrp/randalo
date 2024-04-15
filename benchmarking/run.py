@@ -321,7 +321,7 @@ def get_data(data_config, rng):
             lambda beta_hat: (np.linalg.norm(beta - beta_hat) ** 2 + sigma**2) / 2
         )
 
-    if data_config["src"] == "iid_normal_sparse_poly_awgn":
+    elif data_config["src"] == "iid_normal_sparse_poly_awgn":
         n_train, n_test, p, ord, s, sigma = extract_dict_keys(
             data_config, ["n_train", "n_test", "p", "ord", "s", "sigma"]
         )
@@ -559,11 +559,15 @@ if __name__ == "__main__":
                 results[f"alo_{m}_{bks_seed}_matvec_time"] = running_matvec_time
 
                 with Timer() as timer:
-                    results[f"alo_{m}_{bks_seed}_bks_risk"] = alo.eval_risk(risk_fun, order=None) / n
+                    results[f"alo_{m}_{bks_seed}_bks_risk"] = (
+                        alo.eval_risk(risk_fun, order=None) / n
+                    )
                 results[f"alo_{m}_{bks_seed}_bks_risk_time"] = timer.elapsed
 
                 with Timer() as timer:
-                    results[f"alo_{m}_{bks_seed}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / n
+                    results[f"alo_{m}_{bks_seed}_poly_risk"] = (
+                        alo.eval_risk(risk_fun, order=1) / n
+                    )
                 results[f"alo_{m}_{bks_seed}_poly_risk_time"] = timer.elapsed
                 results[f"alo_{m}_{bks_seed}_poly_risk_error"] = alo.error_estimate / n
 
