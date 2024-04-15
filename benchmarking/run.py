@@ -509,33 +509,63 @@ if __name__ == "__main__":
             results["alo_exact_risk"] = alo_exact.eval_risk(risk_fun) / n
         results["alo_exact_time"] = timer.elapsed
 
-    alo = None
-    running_matvec_time = 0
-    for m in sorted(config["alo_m"]):
-        log(f"Performing randomized ALO up to {m} matvecs...")
-        with Timer() as timer:
-            if alo is None:
-                alo = ALORandomized(
-                    model.loss_fun,
-                    y_train_torch,
-                    y_hat_torch,
-                    model.jac(device),
-                    m,
-                    generator=gen,
-                )
-            else:
-                alo.do_diag_jac_estims_upto(m)
-        running_matvec_time += timer.elapsed
-        results[f"alo_{m}_matvec_time"] = running_matvec_time
+    if config.get("bks_seeds") is None:
 
-        with Timer() as timer:
-            results[f"alo_{m}_bks_risk"] = alo.eval_risk(risk_fun, order=None) / n
-        results[f"alo_{m}_bks_risk_time"] = timer.elapsed
+        alo = None
+        running_matvec_time = 0
+        for m in sorted(config["alo_m"]):
+            log(f"Performing randomized ALO up to {m} matvecs...")
+            with Timer() as timer:
+                if alo is None:
+                    alo = ALORandomized(
+                        model.loss_fun,
+                        y_train_torch,
+                        y_hat_torch,
+                        model.jac(device),
+                        m,
+                        generator=gen,
+                    )
+                else:
+                    alo.do_diag_jac_estims_upto(m)
+            running_matvec_time += timer.elapsed
+            results[f"alo_{m}_matvec_time"] = running_matvec_time
 
-        with Timer() as timer:
-            results[f"alo_{m}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / n
-        results[f"alo_{m}_poly_risk_time"] = timer.elapsed
-        results[f"alo_{m}_poly_risk_error"] = alo.error_estimate / n
+            with Timer() as timer:
+                results[f"alo_{m}_bks_risk"] = alo.eval_risk(risk_fun, order=None) / n
+            results[f"alo_{m}_bks_risk_time"] = timer.elapsed
+
+            with Timer() as timer:
+                results[f"alo_{m}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / n
+            results[f"alo_{m}_poly_risk_time"] = timer.elapsed
+            results[f"alo_{m}_poly_risk_error"] = alo.error_estimate / n
+    else:
+        for bks_seed in config["bks_seeds"]:
+            bks_gen = torch.Generator()
+            bks_gen.manual_seed(bks_seed)
+            alo = None
+            running_matvec_time = 0
+            for m in sorted(config["alo_m"]):
+                log(f"Performing randomized ALO up to {m} matvecs...")
+                with Timer() as timer:
+                    alo = ALORandomized(
+                        model.loss_fun,
+                        y_train_torch,
+                        y_hat_torch,
+                        model.jac(device),
+                        m,
+                        generator=gen,
+                    )
+                running_matvec_time += timer.elapsed
+                results[f"alo_{m}_{bks_seed}_matvec_time"] = running_matvec_time
+
+                with Timer() as timer:
+                    results[f"alo_{m}_{bks_seed}_bks_risk"] = alo.eval_risk(risk_fun, order=None) / n
+                results[f"alo_{m}_{bks_seed}_bks_risk_time"] = timer.elapsed
+
+                with Timer() as timer:
+                    results[f"alo_{m}_{bks_seed}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / n
+                results[f"alo_{m}_{bks_seed}_poly_risk_time"] = timer.elapsed
+                results[f"alo_{m}_{bks_seed}_poly_risk_error"] = alo.error_estimate / n
 
     log("Performing GCV...")
     with Timer() as timer:
