@@ -44,13 +44,13 @@ def weighted_lstsq_fit(x, y, order: int, cov):
     # Disabled weighted least squares because of numerical issues for now
     X = np.vander(x, order + 1, True)
     w = np.linalg.lstsq(X, y, rcond=None)[0]
-    L = np.linalg.solve(X.T @ X, X.T)
-    w2 = L @ y
+    #L = np.linalg.solve(X.T @ X, X.T)
+    #w2 = L @ y
 
-    Sigma = L @ cov @ L.T
-    stddev = np.sqrt(Sigma[0, 0])
+    #Sigma = L @ cov @ L.T
+    #stddev = np.sqrt(Sigma[0, 0])
 
-    return w[0], stddev
+    return w[0]#, stddev
 
 def compute_derivatives(loss_fun, y, y_hat):
 

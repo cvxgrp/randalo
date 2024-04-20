@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod, abstractstaticmethod
 
 import numpy as np
 from scipy import sparse
-from scipy.sparse.linalg import LinearOperator as ScipyLinearOperator, minres
+from scipy.sparse.linalg import LinearOperator as ScipyLinearOperator, minres as scipy_minres
 import torch
 
 from sklearn.ensemble import RandomForestRegressor
@@ -12,6 +12,8 @@ from sklearn.linear_model import Lasso, LogisticRegression
 
 import linops as lo
 from linops import LinearOperator
+
+from alogcv.minres import minres
 
 # from linops.minres import minres
 
@@ -117,6 +119,18 @@ class LinearOperatorWrapper(LinearOperator):
     def _matmul_impl(self, B):
         return self.A @ B
 
+class loATD1APlusD2(LinearOperator):
+    """Linear operator representing A.T @ D1 @ A + D2, where A is a linear operator or matrix and D1 and D2 are diagonal matrices."""
+
+    def __init__(self, A, D1, D2):
+        self._shape = (A.shape[1], A.shape[1])
+        self.dtype = A.dtype
+        self.A = A
+        self.D1 = D1
+        self.D2 = D2
+
+    def _matmul_impl(self, v):
+        return self.A.T @ (self.D1 * (self.A @ v)) + self.D2 * v
 
 class ATD1APlusD2(ScipyLinearOperator):
     """Linear operator representing A.T @ D1 @ A + D2, where A is a linear operator and D1 and D2 are diagonal matrices."""
@@ -140,10 +154,7 @@ class ATD1APlusD2(ScipyLinearOperator):
 
 class SeparableRegularizerJacobian(LinearOperator):
 
-    # TODO: extend to multiple right-hand-sides for sparse X case
-    @property
-    def supports_operator_matrix(self):
-        return not self.issparse
+    supports_operator_matrix = True
 
     def __init__(self, X, loss_hessian_diag, loss_dy_dy_hat_diag, reg_hessian_diag):
         self._shape = (X.shape[0], X.shape[0])
@@ -167,13 +178,17 @@ class SeparableRegularizerJacobian(LinearOperator):
             D1 = sparse.diags(loss_hessian_diag.numpy())
             D2 = sparse.diags(reg_hessian_diag[mask].numpy())
             self.H = ATD1APlusD2(self.X_mask, D1, D2)
-
         # dense X case:
+        else:
+            self.H = loATD1APlusD2(self.X_mask, loss_hessian_diag, reg_hessian_diag[mask])
+
+        """
         else:
             H = self.X_mask.T @ (loss_hessian_diag[:, None] * self.X_mask) + torch.diag(
                 reg_hessian_diag[mask]
             )
             self.LD, self.pivots = torch.linalg.ldl_factor(H)
+        """
 
     def _matmul_impl(self, A):
         if A.ndim == 1:
@@ -187,7 +202,10 @@ class SeparableRegularizerJacobian(LinearOperator):
         # dense X case:
         if not self.issparse:
             B = self.X_mask.T @ A
+            """
             Z = torch.linalg.ldl_solve(self.LD, self.pivots, B)
+            """
+            Z = minres(self.H, B)
         # sparse X case:
         else:
             B = self.X_mask.T @ A.detach().numpy()
@@ -203,12 +221,14 @@ class SeparableRegularizerJacobian(LinearOperator):
 
         # dense X case:
         if not self.issparse:
+            """
             return -self.X_mask @ torch.linalg.ldl_solve(
                 self.LD, self.pivots, self.X_mask.T * self.loss_dy_dy_hat_diag_[None, :]
             )
+            """
+
         # sparse X case:
-        else:
-            return self @ torch.eye(self.shape[0])
+        return self @ torch.eye(self.shape[0])
 
     @property
     def diag(self):

@@ -514,6 +514,7 @@ if __name__ == "__main__":
         alo = None
         running_matvec_time = 0
         for m in sorted(config["alo_m"]):
+
             log(f"Performing randomized ALO up to {m} matvecs...")
             with Timer() as timer:
                 if alo is None:
@@ -537,8 +538,6 @@ if __name__ == "__main__":
             with Timer() as timer:
                 results[f"alo_{m}_poly_risk"] = alo.eval_risk(risk_fun, order=1) / n
             results[f"alo_{m}_poly_risk_time"] = timer.elapsed
-            results[f"alo_{m}_poly_risk_error"] = alo.error_estimate / n
-
     else:
         for bks_seed in config["bks_seeds"]:
             bks_gen = torch.Generator()
@@ -570,7 +569,6 @@ if __name__ == "__main__":
                         alo.eval_risk(risk_fun, order=1) / n
                     )
                 results[f"alo_{m}_{bks_seed}_poly_risk_time"] = timer.elapsed
-                results[f"alo_{m}_{bks_seed}_poly_risk_error"] = alo.error_estimate / n
 
     log("Performing GCV...")
     with Timer() as timer:

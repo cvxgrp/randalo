@@ -342,8 +342,7 @@ class ALORandomized(RandomizedMixin, ALOBase):
         # coefs, self._res_m_to_risk_fit = utils.robust_poly_fit(
         # 1 / ms**power, self._risks, order
         # )
-        risk, stddev = utils.weighted_lstsq_fit(1 / ms**power, self._risks, order, cov)
-        self.error_estimate = stddev
+        risk = utils.weighted_lstsq_fit(1 / ms**power, self._risks, order, cov)
 
         return risk
 
