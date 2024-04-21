@@ -1,6 +1,7 @@
 import torch
 import linops as lo
 
+
 def minres(A, b, M=None, x0=None, tol=1e-5, maxiters=None, verbose=True):
     """
     Code based on scipy.sparse.linalg.minres
@@ -143,7 +144,7 @@ def minres(A, b, M=None, x0=None, tol=1e-5, maxiters=None, verbose=True):
         rhs2 = - epsilon * z
 
         Anorm = torch.sqrt(tnorm2.max())
-        ynorm = torch.linalg.norm(x) # TODO: fix this
+        ynorm = torch.linalg.norm(x, axis=0) # TODO: fix this
         epsa = Anorm * eps
         epsx = Anorm * ynorm * eps
         #epsr = Anorm * ynorm * tol
@@ -152,7 +153,7 @@ def minres(A, b, M=None, x0=None, tol=1e-5, maxiters=None, verbose=True):
             diag = epsa
         qrnorm = phibar
         rnorm = qrnorm
-        if ynorm == 0 or Anorm == 0:
+        if ynorm.min() == 0 or Anorm == 0:
             test1 = torch.inf
         else:
             test1 = rnorm / (Anorm * ynorm)
