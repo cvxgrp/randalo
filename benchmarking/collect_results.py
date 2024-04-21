@@ -5,7 +5,35 @@ import os
 import sys
 
 import numpy as np
+from scipy import stats
 from matplotlib import pyplot as plt
+
+
+def setup_matplotlib():
+
+    plt.rc("text", usetex=True)
+    plt.rc("text.latex", preamble=r"\usepackage{amsmath}\usepackage{bm}")
+    plt.rcParams["figure.figsize"] = [6.5, 3]
+    plt.rcParams["figure.dpi"] = 150
+    plt.rcParams["font.family"] = "serif"
+    plt.rcParams["font.serif"] = "Times New Roman"
+    plt.rcParams["font.size"] = 10
+    plt.rcParams["axes.titlesize"] = "small"
+    plt.rcParams["axes.titlepad"] = 3
+    plt.rcParams["xtick.labelsize"] = "x-small"
+    plt.rcParams["ytick.labelsize"] = plt.rcParams["xtick.labelsize"]
+    plt.rcParams["legend.fontsize"] = 8
+    plt.rcParams["legend.handlelength"] = 1.5
+    plt.rcParams["lines.markersize"] = 3
+    plt.rcParams["lines.linewidth"] = 0.7
+    plt.rcParams["patch.linewidth"] = 0.7
+    plt.rcParams["hatch.linewidth"] = 0.7
+    plt.rcParams["axes.linewidth"] = 0.6
+    plt.rcParams["grid.linewidth"] = 0.6
+    plt.rcParams["xtick.major.width"] = 0.6
+    plt.rcParams["xtick.minor.width"] = 0.4
+    plt.rcParams["ytick.major.width"] = plt.rcParams["xtick.major.width"]
+    plt.rcParams["ytick.minor.width"] = plt.rcParams["xtick.minor.width"]
 
 
 def load_results(results_dir):
@@ -621,7 +649,7 @@ def lasso_poly_scatter(results):
     plt.plot(
         np.linspace(0, 0.1),
         np.vander(np.linspace(0, 0.1), 2, True) @ w2,
-        label='$\hat{R}_0 + \hat{R}_1 / m$'
+        label='$\\hat{R}_0 + \\hat{R}_1 / m$'
     )
     """
 
@@ -1014,6 +1042,85 @@ def first_diff_scaling():
     plt.show()
 
 
+def truncated_normal_viz():
+
+    n, p, m = 100, 100, 50
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(n, p)) * rng.uniform(0.5, 1, size=(n, 1))
+    W = rng.integers(0, 2, size=(p, m)) * 2 - 1
+    lamda = 0.1
+
+    J = X @ np.linalg.solve(X.T @ X + lamda * np.eye(p), X.T)
+    Jdiag = np.diag(J)
+    D = (J @ W) * W
+    mu = np.mean(D, axis=1)
+    sigma = np.std(D, axis=1)
+    a = (0 - mu) / sigma * np.sqrt(m)
+    b = (1 - mu) / sigma * np.sqrt(m)
+    d = stats.truncnorm.mean(a, b, loc=mu, scale=sigma / np.sqrt(m))
+
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    fig, axes = plt.subplots(1, 2, figsize=(6.5, 3))
+
+    sigma0 = np.mean(sigma) / np.sqrt(m) * 1.5
+    Jtr = 0.97
+    Jhat = 1.007
+    a0 = (0 - Jhat) / sigma0
+    b0 = (1 - Jhat) / sigma0
+
+    Js = np.linspace(Jhat - sigma0 * 2.5, Jhat + sigma0 * 2.5, 500)
+    f0 = stats.norm.pdf(Js, loc=Jhat, scale=sigma0)
+    f1 = stats.truncnorm.pdf(Js, a0, b0, loc=Jhat, scale=sigma0)
+    axes[0].axvline(Jtr, color="black", linestyle="--", label="True $\\tilde{J}_{ii}$")
+    axes[0].plot(Js, f0, label="Gaussian likelihood")
+    axes[0].axvline(
+        Jhat, color=color_cycle[0], linestyle=":", label="Gaussian MLE $\\mu_i$"
+    )
+    axes[0].plot(Js, f1, label="Truncated normal posterior")
+    axes[0].axvline(
+        stats.truncnorm.mean(a0, b0, loc=Jhat, scale=sigma0),
+        color=color_cycle[1],
+        linestyle=":",
+        label="Truncated normal MMSE",
+    )
+    ylim = axes[0].get_ylim()
+
+    axes[0].set_title("Diagonal estimation")
+    axes[0].set_ylim(ylim[0], 55)
+    axes[0].legend(loc="upper left")
+    axes[0].set_xlabel("$\\tilde{J}_{ii}$")
+
+    J0 = np.linspace(np.min(Jdiag), 0.999, 100)
+    axes[1].plot(
+        J0, J0 / (1 - J0), "--k", label="$\\tilde{J}_{ii} / (1 - \\tilde{J}_{ii})$"
+    )
+
+    eps = 0
+    bad_mask = mu > 1 - eps
+    eps = 1e-3
+    mu[bad_mask] = np.nan
+    axes[1].scatter(Jdiag, mu / (1 - mu), label="Gaussian MLE $\\mu_i$")
+    axes[1].scatter(
+        Jdiag[bad_mask],
+        [(1 - eps) / eps] * np.sum(bad_mask),
+        marker="D",
+        color="red",
+        label="Gaussian MLE $\\mu_i$ (bad)",
+    )
+    axes[1].scatter(Jdiag, d / (1 - d), marker="x", label="Truncated normal MMSE")
+
+    axes[1].set_title("Inversion sensitivity")
+    axes[1].set_xlabel("$\\tilde{J}_{ii}$")
+    axes[1].set_yscale("log")
+    axes[1].legend()
+
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join("figures", "truncated_normal_viz.pdf"), bbox_inches="tight"
+    )
+
+
 collect_mapping = {
     "categorical_comp": categorical_comp,
     "lasso_bks_convergence": lasso_bks_convergence,
@@ -1023,11 +1130,14 @@ collect_mapping = {
     "logistic_comp": logistic_comp,
     "multivariate_t_comp": multivariate_t_comp,
     "random_forest_comp": random_forest_comp,
+    "truncated_normal_viz": truncated_normal_viz,
     "first_diff_scaling_1": first_diff_scaling_1,
 }
 
 
 if __name__ == "__main__":
+
+    setup_matplotlib()
 
     benchmarks = sys.argv[1:]
     if len(benchmarks) == 0:
@@ -1037,5 +1147,8 @@ if __name__ == "__main__":
         if benchmark not in collect_mapping:
             raise ValueError(f"Unknown benchmark {benchmark}")
 
-        results = load_results(os.path.join(benchmark, "results"))
-        collect_mapping[benchmark](results)
+        try:
+            results = load_results(os.path.join(benchmark, "results"))
+            collect_mapping[benchmark](results)
+        except FileNotFoundError:
+            collect_mapping[benchmark]()
