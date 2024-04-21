@@ -120,7 +120,11 @@ class LinearOperatorWrapper(LinearOperator):
         return self.A @ B
 
 class loATD1APlusD2(LinearOperator):
-    """Linear operator representing A.T @ D1 @ A + D2, where A is a linear operator or matrix and D1 and D2 are diagonal matrices."""
+    """
+    Linear operator representing A.T @ D1 @ A + D2,
+    where A is a linear operator or matrix and D1
+    and D2 are diagonal matrices."""
+    supports_operator_matrix = True
 
     def __init__(self, A, D1, D2):
         self._shape = (A.shape[1], A.shape[1])
@@ -130,7 +134,7 @@ class loATD1APlusD2(LinearOperator):
         self.D2 = D2
 
     def _matmul_impl(self, v):
-        return self.A.T @ (self.D1 * (self.A @ v)) + self.D2 * v
+        return self.A.T @ (self.D1[:, None] * (self.A @ v)) + self.D2[:, None] * v
 
 class ATD1APlusD2(ScipyLinearOperator):
     """Linear operator representing A.T @ D1 @ A + D2, where A is a linear operator and D1 and D2 are diagonal matrices."""

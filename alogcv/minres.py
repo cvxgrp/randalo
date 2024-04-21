@@ -143,7 +143,7 @@ def minres(A, b, M=None, x0=None, tol=1e-5, maxiters=None, verbose=True):
         rhs2 = - epsilon * z
 
         Anorm = torch.sqrt(tnorm2.max())
-        ynorm = torch.linalg.norm(x)
+        ynorm = torch.linalg.norm(x) # TODO: fix this
         epsa = Anorm * eps
         epsx = Anorm * ynorm * eps
         #epsr = Anorm * ynorm * tol
