@@ -160,8 +160,14 @@ class SeparableRegularizerJacobian(LinearOperator):
 
     supports_operator_matrix = True
 
-    def __init__(self, X, loss_hessian_diag, loss_dy_dy_hat_diag, reg_hessian_diag):
-        self._shape = (X.shape[0], X.shape[0])
+    def __init__(self, X, loss_hessian_diag, loss_dy_dy_hat_diag, reg_hessian_diag,
+                 use_direct_method=None):
+        n = X.shape[0]
+        self._shape = (n, n)
+
+        self._direct = use_direct_method \
+                if use_direct_method is not None \
+                else n < 2500
 
         if sparse.issparse(X):
             X = X.tocsc()
@@ -179,20 +185,18 @@ class SeparableRegularizerJacobian(LinearOperator):
 
         # sparse X case:
         if self.issparse:
+            assert not self._direct, "Direct sparse data isn't supported" 
             D1 = sparse.diags(loss_hessian_diag.numpy())
             D2 = sparse.diags(reg_hessian_diag[mask].numpy())
             self.H = ATD1APlusD2(self.X_mask, D1, D2)
         # dense X case:
-        else:
-            self.H = loATD1APlusD2(self.X_mask, loss_hessian_diag, reg_hessian_diag[mask])
-
-        """
-        else:
+        elif self._direct:
             H = self.X_mask.T @ (loss_hessian_diag[:, None] * self.X_mask) + torch.diag(
                 reg_hessian_diag[mask]
             )
             self.LD, self.pivots = torch.linalg.ldl_factor(H)
-        """
+        else:
+            self.H = loATD1APlusD2(self.X_mask, loss_hessian_diag, reg_hessian_diag[mask])
 
     def _matmul_impl(self, A):
         if A.ndim == 1:
@@ -206,14 +210,14 @@ class SeparableRegularizerJacobian(LinearOperator):
         # dense X case:
         if not self.issparse:
             B = self.X_mask.T @ A
-            """
-            Z = torch.linalg.ldl_solve(self.LD, self.pivots, B)
-            """
-            Z = minres(self.H, B)
+            if self._direct:
+                Z = torch.linalg.ldl_solve(self.LD, self.pivots, B)
+            else:
+                Z = minres(self.H, B)
         # sparse X case:
         else:
             B = self.X_mask.T @ A.detach().numpy()
-            Z = minres(self.H, B)[0]
+            Z = scipy_minres(self.H, B)[0]
             need_squeeze = False
 
         if need_squeeze:
@@ -223,15 +227,13 @@ class SeparableRegularizerJacobian(LinearOperator):
 
     def todense(self):
 
-        # dense X case:
-        if not self.issparse:
-            """
+        # dense X and direct solve case:
+        if not self.issparse and self._direct:
             return -self.X_mask @ torch.linalg.ldl_solve(
                 self.LD, self.pivots, self.X_mask.T * self.loss_dy_dy_hat_diag_[None, :]
             )
-            """
 
-        # sparse X case:
+        # sparse X or indirect solve case:
         return self @ torch.eye(self.shape[0])
 
     @property
@@ -357,6 +359,7 @@ class SeparableRegularizerMixin(ABC):
             self._d2loss_dy_hat2,
             self._d2loss_dboth,
             self.reg_hessian_diag_.to(device),
+            self._direct,
         )
 
 
@@ -399,10 +402,12 @@ class LassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
         self,
         lamda,
         sklearn_lasso_kwargs={},
+        direct: bool | None=None,
     ):
         super().__init__()
         self.lamda = lamda
         self.sklearn_lasso_kwargs = sklearn_lasso_kwargs
+        self._direct = direct
 
     def get_new_model(self):
         kwargs = self.sklearn_lasso_kwargs.copy()
@@ -511,10 +516,12 @@ class LogisticModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
         self,
         lamda,
         sklearn_logistic_kwargs={},
+        direct: bool | None=None,
     ):
         super().__init__()
         self.lamda = lamda
         self.sklearn_logistic_kwargs = sklearn_logistic_kwargs
+        self._direct = direct
 
     def get_new_model(self):
         kwargs = self.sklearn_logistic_kwargs.copy()
