@@ -17,11 +17,14 @@ for scale in [100, 500, 2000]:
     config["data"]["p"] = p = p0 * scale
     config["data"]["s"] = s0 * scale
 
-    for seed in range(100):
-        config["seed"] = seed
+    for direct in [True, False]:
+        config["method_kwargs"]["direct"] = direct
 
-        id = hashlib.sha256(json.dumps(config).encode()).hexdigest()[:8]
-        config["id"] = id
+        for seed in range(100):
+            config["seed"] = seed
 
-        with open(os.path.join("configs", f"run_{id}.json"), "w") as f:
-            json.dump(config, f, indent=4)
+            id = hashlib.sha256(json.dumps(config).encode()).hexdigest()[:8]
+            config["id"] = id
+
+            with open(os.path.join("configs", f"run_{id}.json"), "w") as f:
+                json.dump(config, f, indent=4)

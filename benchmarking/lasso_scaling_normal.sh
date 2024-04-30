@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=20GB
 #SBATCH --partition=hns,pilanci
-#SBATCH --array=1-300
+#SBATCH --array=1-600
 
 BASE_DIR=$HOME/alo/benchmarking/lasso_scaling_normal
 CONFIGS_DIR=$BASE_DIR/configs

@@ -375,7 +375,8 @@ def model_lookup(config):
     if method == "lasso":
         p = config["data"]["p"]
         lamda = method_kwargs.pop("lamda0") / np.sqrt(p)
-        return LassoModel(lamda, sklearn_lasso_kwargs=method_kwargs)
+        direct = method_kwargs.pop("direct", None)
+        return LassoModel(lamda, sklearn_lasso_kwargs=method_kwargs, direct=direct)
 
     if method == "first-difference":
         lamda = method_kwargs.pop("lamda0")

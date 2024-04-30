@@ -1,8 +1,12 @@
 from abc import ABC, abstractmethod, abstractstaticmethod
+from typing import Optional
 
 import numpy as np
 from scipy import sparse
-from scipy.sparse.linalg import LinearOperator as ScipyLinearOperator, minres as scipy_minres
+from scipy.sparse.linalg import (
+    LinearOperator as ScipyLinearOperator,
+    minres as scipy_minres,
+)
 import torch
 
 from sklearn.ensemble import RandomForestRegressor
@@ -119,11 +123,13 @@ class LinearOperatorWrapper(LinearOperator):
     def _matmul_impl(self, B):
         return self.A @ B
 
+
 class loATD1APlusD2(LinearOperator):
     """
     Linear operator representing A.T @ D1 @ A + D2,
     where A is a linear operator or matrix and D1
     and D2 are diagonal matrices."""
+
     supports_operator_matrix = True
 
     def __init__(self, A, D1, D2):
@@ -135,6 +141,7 @@ class loATD1APlusD2(LinearOperator):
 
     def _matmul_impl(self, v):
         return self.A.T @ (self.D1[:, None] * (self.A @ v)) + self.D2[:, None] * v
+
 
 class ATD1APlusD2(ScipyLinearOperator):
     """Linear operator representing A.T @ D1 @ A + D2, where A is a linear operator and D1 and D2 are diagonal matrices."""
@@ -160,14 +167,18 @@ class SeparableRegularizerJacobian(LinearOperator):
 
     supports_operator_matrix = True
 
-    def __init__(self, X, loss_hessian_diag, loss_dy_dy_hat_diag, reg_hessian_diag,
-                 use_direct_method=None):
+    def __init__(
+        self,
+        X,
+        loss_hessian_diag,
+        loss_dy_dy_hat_diag,
+        reg_hessian_diag,
+        use_direct_method=None,
+    ):
         n = X.shape[0]
         self._shape = (n, n)
 
-        self._direct = use_direct_method \
-                if use_direct_method is not None \
-                else n < 2500
+        self._direct = use_direct_method if use_direct_method is not None else n < 2500
 
         if sparse.issparse(X):
             X = X.tocsc()
@@ -185,7 +196,7 @@ class SeparableRegularizerJacobian(LinearOperator):
 
         # sparse X case:
         if self.issparse:
-            assert not self._direct, "Direct sparse data isn't supported" 
+            assert not self._direct, "Direct solver for sparse data isn't supported"
             D1 = sparse.diags(loss_hessian_diag.numpy())
             D2 = sparse.diags(reg_hessian_diag[mask].numpy())
             self.H = ATD1APlusD2(self.X_mask, D1, D2)
@@ -196,7 +207,9 @@ class SeparableRegularizerJacobian(LinearOperator):
             )
             self.LD, self.pivots = torch.linalg.ldl_factor(H)
         else:
-            self.H = loATD1APlusD2(self.X_mask, loss_hessian_diag, reg_hessian_diag[mask])
+            self.H = loATD1APlusD2(
+                self.X_mask, loss_hessian_diag, reg_hessian_diag[mask]
+            )
 
     def _matmul_impl(self, A):
         if A.ndim == 1:
@@ -402,7 +415,7 @@ class LassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
         self,
         lamda,
         sklearn_lasso_kwargs={},
-        direct: bool | None=None,
+        direct: Optional[bool] = None,
     ):
         super().__init__()
         self.lamda = lamda
@@ -516,7 +529,7 @@ class LogisticModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
         self,
         lamda,
         sklearn_logistic_kwargs={},
-        direct: bool | None=None,
+        direct: Optional[bool] = None,
     ):
         super().__init__()
         self.lamda = lamda
