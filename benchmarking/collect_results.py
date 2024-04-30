@@ -25,11 +25,20 @@ def setup_matplotlib():
     plt.rcParams["legend.fontsize"] = 8
     plt.rcParams["legend.handlelength"] = 1.5
     plt.rcParams["lines.markersize"] = 3
+    plt.rcParams["lines.markeredgewidth"] = 0.5
     plt.rcParams["lines.linewidth"] = 0.7
     plt.rcParams["patch.linewidth"] = 0.7
     plt.rcParams["hatch.linewidth"] = 0.7
     plt.rcParams["axes.linewidth"] = 0.6
     plt.rcParams["grid.linewidth"] = 0.6
+    plt.rcParams["boxplot.whiskerprops.linewidth"] = 0.7
+    plt.rcParams["boxplot.boxprops.linewidth"] = 0.7
+    plt.rcParams["boxplot.flierprops.markersize"] = 5
+    plt.rcParams["boxplot.flierprops.linewidth"] = 0.2
+    plt.rcParams["boxplot.flierprops.marker"] = "o"
+    plt.rcParams["boxplot.flierprops.markeredgewidth"] = 0.7
+    plt.rcParams["boxplot.capprops.linewidth"] = 0.7
+    plt.rcParams["boxplot.medianprops.linewidth"] = 0.7
     plt.rcParams["xtick.major.width"] = 0.6
     plt.rcParams["xtick.minor.width"] = 0.4
     plt.rcParams["ytick.major.width"] = plt.rcParams["xtick.major.width"]
@@ -233,7 +242,16 @@ def relative_error(a, b):
     return np.abs(a - b) / b
 
 
-def grouped_boxplot(data, x_labels, group_labels, ax=None, legend=True, **kwargs):
+def grouped_boxplot(
+    data,
+    x_labels,
+    group_labels,
+    ax=None,
+    legend=True,
+    color_idx=None,
+    hatch_idx=None,
+    **kwargs,
+):
 
     if ax is None:
         ax = plt.gca()
@@ -245,19 +263,23 @@ def grouped_boxplot(data, x_labels, group_labels, ax=None, legend=True, **kwargs
     x = np.arange(n_boxes)
 
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    if color_idx is not None:
+        color_cycle = [color_cycle[i] for i in color_idx]
     hatches = [
         "",
-        "///",
-        "xxx",
-        "ooo",
-        "+++",
-        "\\\\\\",
-        "///",
-        "xxx",
-        "ooo",
-        "+++",
-        "\\\\\\",
+        "////",
+        "xxxx",
+        "oooo",
+        "++++",
+        "\\\\\\\\",
+        "////",
+        "xxxx",
+        "oooo",
+        "++++",
+        "\\\\\\\\",
     ]
+    if hatch_idx is not None:
+        hatches = [hatches[i] for i in hatch_idx]
 
     for i, group_label in enumerate(group_labels):
         box_data = data[i]
@@ -338,10 +360,11 @@ def lasso_scaling_normal(results):
     axes_keys = [
         ["config", "data", "n_train"],
         ["config", "seed"],
+        ["config", "method_kwargs", "direct"],
     ]
 
     results = extract_all_results(results, axes_keys)
-    ns, seeds = results.axes
+    ns, seeds, direct = results.axes
     cv_k = results.cv_k
     alo_m = results.alo_m
     k = 5
@@ -353,9 +376,38 @@ def lasso_scaling_normal(results):
     i_m2 = alo_m.index(m2)
     i_m3 = alo_m.index(m3)
 
+    direct_vals = [True, False, False]
+    i_direct = [direct.index(tf) for tf in direct_vals]
+
+    results.test_risks = np.stack(
+        [results.test_risks[i, :, i_direct[i]] for i in range(len(ns))], axis=0
+    )
+    results.cv_risks = np.stack(
+        [results.cv_risks[i, :, i_direct[i], :] for i in range(len(ns))], axis=0
+    )
+    results.alo_bks_risks = np.stack(
+        [results.alo_bks_risks[i, :, i_direct[i], :] for i in range(len(ns))], axis=0
+    )
+    results.alo_poly_risks = np.stack(
+        [results.alo_poly_risks[i, :, i_direct[i], :] for i in range(len(ns))], axis=0
+    )
+
+    results.full_train_times = np.stack(
+        [results.full_train_times[i, :, i_direct[i]] for i in range(len(ns))], axis=0
+    )
+    results.cv_times = np.stack(
+        [results.cv_times[i, :, i_direct[i], :] for i in range(len(ns))], axis=0
+    )
+    results.alo_bks_times = np.stack(
+        [results.alo_bks_times[i, :, i_direct[i], :] for i in range(len(ns))], axis=0
+    )
+    results.alo_poly_times = np.stack(
+        [results.alo_poly_times[i, :, i_direct[i], :] for i in range(len(ns))], axis=0
+    )
+
     # First, plot only BKS
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), dpi=300)
+    fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
     grouped_boxplot(
         [
             results.test_risks,
@@ -377,22 +429,30 @@ def lasso_scaling_normal(results):
     axes[0].set_ylabel("Squared Error")
     axes[0].set_xlabel("Sample Size")
 
+    axes[1].axhline(1, color="black", linestyle="--", label="Training")
     grouped_boxplot(
         [
-            results.full_train_times,
-            results.cv_times[..., i_k],
-            results.alo_bks_times[..., i_m1],
-            results.alo_bks_times[..., i_m2],
+            # results.full_train_times / results.full_train_times,
+            results.cv_times[..., i_k] / results.full_train_times,
+            results.alo_bks_times[..., i_m1] / results.full_train_times,
+            results.alo_bks_times[..., i_m2] / results.full_train_times,
         ],
         [f"n={n}" for n in ns],
-        ["Training", f"CV($K={k}$)", f"BKS-ALO($m={m1}$)", f"BKS-ALO($m={m2}$)"],
+        [
+            # "Training",
+            f"CV($K={k}$)",
+            f"BKS-ALO($m={m1}$)",
+            f"BKS-ALO($m={m2}$)",
+        ],
         ax=axes[1],
+        color_idx=[1, 2, 3],
+        hatch_idx=[1, 2, 3],
     )
 
     axes[1].set_title("Time vs. Sample Size")
-    axes[1].set_ylabel("Time (s)")
+    axes[1].set_ylabel("Relative Time")
     axes[1].set_xlabel("Sample Size")
-    axes[1].set_yscale("log")
+    # axes[1].set_yscale("log")
 
     plt.tight_layout()
     plt.savefig(
@@ -401,7 +461,7 @@ def lasso_scaling_normal(results):
 
     # Next, plot both BKS and Poly
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), dpi=300)
+    fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
     grouped_boxplot(
         [
             results.test_risks,
@@ -423,25 +483,28 @@ def lasso_scaling_normal(results):
     axes[0].set_ylabel("Squared Error")
     axes[0].set_xlabel("Sample Size")
 
+    axes[1].axhline(1, color="black", linestyle="--", label="Training")
     grouped_boxplot(
         [
-            results.full_train_times / results.full_train_times,
+            # results.full_train_times / results.full_train_times,
             results.cv_times[..., i_k] / results.full_train_times,
             results.alo_bks_times[..., i_m3] / results.full_train_times,
             results.alo_poly_times[..., i_m3] / results.full_train_times,
         ],
         [f"n={n}" for n in ns],
         [
-            "Training",
+            # "Training",
             f"CV($K={k}$)",
             f"BKS-ALO($m={m3}$)",
             f"RandALO($m={m3}$)",
         ],
         ax=axes[1],
+        color_idx=[1, 2, 3],
+        hatch_idx=[1, 2, 3],
     )
 
     axes[1].set_title("Time vs. Sample Size")
-    axes[1].set_ylabel("Time (s)")
+    axes[1].set_ylabel("Relative Time")
     axes[1].set_xlabel("Sample Size")
     # axes[1].set_yscale("log")
 
