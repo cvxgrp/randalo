@@ -23,6 +23,7 @@ from alogcv.models import (
     LogisticModel,
     RandomForestRegressorModel,
 )
+from alogcv.utils import GaussianGridIntegrator, sigmoid
 
 
 class Timer(object):
@@ -277,33 +278,47 @@ def get_data(data_config, rng):
         )
         X0_train = rng.integers(0, n_categories, size=(n_train, p))
         onehot = OneHotEncoder()
-        X_train = onehot.fit_transform(X0_train)
+        X_train = onehot.fit_transform(X0_train) * np.sqrt(n_categories)
         X0_test = rng.integers(0, n_categories, size=(n_test, p))
-        X_test = onehot.transform(X0_test)
+        X_test = onehot.transform(X0_test) * np.sqrt(n_categories)
         beta = np.zeros(n_categories * p)
         nz_idx = rng.choice(p, s, replace=False)
-        beta[nz_idx] = rng.normal(size=s) * np.sqrt(n_categories / s)
+        beta[nz_idx] = rng.normal(size=s) / np.sqrt(s)
         y_train = X_train @ beta + rng.normal(scale=sigma, size=n_train)
         y_test = X_test @ beta + rng.normal(scale=sigma, size=n_test)
 
-        gen_risk_linear = None
+        def gen_risk_linear(beta_hat):
+            delta = beta - beta_hat
+            risk = np.linalg.norm(delta) ** 2 + sigma**2
+            risk += np.sum(delta) ** 2 / n_categories
+            for j in range(p):
+                i = n_categories * j
+                risk -= np.sum(delta[i : i + n_categories]) ** 2 / n_categories
+            return risk / 2
 
     elif data_config["src"] == "iid_normal_logistic_sparse":
         n_train, n_test, p, s, rho = extract_dict_keys(
             data_config, ["n_train", "n_test", "p", "s", "rho"]
         )
         X_train = rng.normal(size=(n_train, p))
-        X_test = rng.normal(size=(n_test, p))
         beta = np.zeros(p)
         beta[:s] = rng.normal(size=s) / np.sqrt(s)
-        # beta[:s] = x_mean[0, :s] / np.sqrt(s)
-
-        prob = 1 / (1 + np.exp(-X_train @ beta * rho))
+        prob = sigmoid(X_train @ beta * rho)
         y_train = (rng.uniform(size=n_train) < prob).astype(float) * 2 - 1
-        prob = 1 / (1 + np.exp(-X_test @ beta * rho))
+
+        X_test = rng.normal(size=(n_test, p))
+        prob = sigmoid(X_test @ beta * rho)
         y_test = (rng.uniform(size=n_test) < prob).astype(float) * 2 - 1
 
-        gen_risk_linear = None
+        def gen_risk_linear(beta_hat):
+            Sigma = np.array(
+                [[beta @ beta, beta @ beta_hat], [beta_hat @ beta, beta_hat @ beta_hat]]
+            )
+            integrator = GaussianGridIntegrator(
+                Sigma=Sigma, n_samples_per_dim=1000, b=7
+            )
+            fun = lambda z: sigmoid(-np.sign(z[1, ...]) * z[0, ...] * rho)
+            return integrator.integrate(fun)
 
     elif data_config["src"] == "iid_sparse_normal_sparse_awgn":
         n_train, n_test, p, nz_ratio, s, sigma = extract_dict_keys(

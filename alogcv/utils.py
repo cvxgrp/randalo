@@ -1,9 +1,11 @@
+from abc import ABC, abstractmethod
 import time
 
 import cvxpy as cp
 import numpy as np
 import linops as lo
 import scipy
+from scipy import stats
 import torch
 from torch import autograd
 
@@ -19,13 +21,14 @@ def robust_poly_fit(x, y, order: int):
         return [np.nan for _ in range(order + 1)], np.inf
     return beta.value, r.value
 
+
 def weighted_lstsq_fit(x, y, order: int, cov):
     # solves min_beta  1/2 (X beta - y)^T cov^{-1} (X @ beta - y)
     #                = 1/2 (beta^T X^T - y^T) (cov^{-1} X @ beta - cov^{-1} y)
     #                = 1/2 (beta^T X^T cov^{-1} X @ beta) - beta^T X^T cov^{-1} y + constant
     #                = 1/2 (beta^T X^T cov^{-1} X @ beta) - beta^T X^T cov^{-1} y + constant
     #   i.e. beta^star = Ly = (X^T cov^{-1} X)^{-1} X^T cov^{-1} y
-    # Alternatively we're after 
+    # Alternatively we're after
     #  min. 1/2 r^T cov^{-1} r s.t. r = y - X beta
     # which becomes
     # min. 1/2 r^T cov^{-1} r s.t. y = [I X] (r, beta)
@@ -44,13 +47,14 @@ def weighted_lstsq_fit(x, y, order: int, cov):
     # Disabled weighted least squares because of numerical issues for now
     X = np.vander(x, order + 1, True)
     w = np.linalg.lstsq(X, y, rcond=None)[0]
-    #L = np.linalg.solve(X.T @ X, X.T)
-    #w2 = L @ y
+    # L = np.linalg.solve(X.T @ X, X.T)
+    # w2 = L @ y
 
-    #Sigma = L @ cov @ L.T
-    #stddev = np.sqrt(Sigma[0, 0])
+    # Sigma = L @ cov @ L.T
+    # stddev = np.sqrt(Sigma[0, 0])
 
-    return w[0]#, stddev
+    return w[0]  # , stddev
+
 
 def compute_derivatives(loss_fun, y, y_hat):
 
@@ -199,3 +203,131 @@ def jvp_generalized_hessian(X, l_diag, D, r_diag, Z):
     LD, pivots = torch.linalg.ldl_factor(M)
 
     return X @ linalg.ldl_solve(LD, pivots, X.T @ Z)
+
+
+########################################
+
+
+class FixedIntegrator(ABC):
+
+    def __init__(self):
+        self.weights = np.ones(1)
+        self.points = np.zeros(1)
+
+    def integrate(self, fun):
+
+        return np.einsum("i,...i->...", self.weights, fun(self.points))
+
+
+class GaussianGridIntegrator(FixedIntegrator):
+
+    def __init__(self, Sigma=None, mu=None, n_samples_per_dim=100, b=5):
+
+        self.A = _get_gaussian_transform_matrix(Sigma)
+
+        if mu is None:
+            mu = 0
+        else:
+            mu = mu
+        self.mu = _ensure_nd_array(mu, n=1)
+
+        self.n_samples_per_dim = n_samples_per_dim
+        self.b = b
+        self.ndim = self.A.shape[0]
+
+        tails_1d = 2 * stats.norm.cdf(-b)
+        self.area = (1 - tails_1d) ** self.ndim
+
+        zs = np.linspace(-b, b, num=n_samples_per_dim)
+        self.epsilon = (zs[1] - zs[0]) ** self.ndim
+
+        self.zs = _get_grid_vectors(zs, ndim=self.ndim)
+
+        self.points = self.A @ self.zs + self.mu[:, None]
+        self.weights = (
+            self.epsilon
+            / (2 * np.pi) ** (self.ndim / 2)
+            * np.exp(-1 / 2 * np.linalg.norm(self.zs, axis=0) ** 2)
+            / self.area
+        )
+
+
+class GaussHermiteIntegrator(FixedIntegrator):
+
+    def __init__(self, Sigma=None, mu=None, deg=20):
+
+        self.A = _get_gaussian_transform_matrix(Sigma)
+
+        if mu is None:
+            mu = 0
+        else:
+            mu = mu
+        self.mu = _ensure_nd_array(mu, n=1)
+
+        self.deg = deg
+
+        self.ndim = self.A.shape[0]
+
+        zs, ws = np.polynomial.hermite.hermgauss(deg)
+
+        self.zs = _get_grid_vectors(zs, ndim=self.ndim)
+        self.ws = _get_grid_vectors(ws, ndim=self.ndim)
+
+        self.points = np.sqrt(2) * self.A @ self.zs + self.mu[:, None]
+        self.weights = 1 / np.pi ** (self.ndim / 2) * np.prod(self.ws, axis=0)
+
+
+def _get_grid_vectors(zs, ndim=2, copy=False):
+
+    grids = np.meshgrid(*((zs,) * ndim), copy=copy)
+    return np.stack([grid.ravel() for grid in grids])
+
+
+def _get_gaussian_transform_matrix(Sigma=None, rot45=True):
+
+    if Sigma is None:
+        Sigma = np.ones((1, 1))
+    else:
+        Sigma = _ensure_nd_array(Sigma, n=2)
+        Sigma = (Sigma + Sigma.T) / 2
+
+    w, v = np.linalg.eigh(Sigma)
+
+    # clip small negative values
+    w = np.clip(w, 0, None)
+
+    A = v * np.sqrt(w)[None, :]
+    if rot45:
+        A = _rotate_all_column_pairs_45(A)
+
+    return A
+
+
+def _rotate_all_column_pairs_45(A):
+
+    rot45 = np.array([[1.0, 1.0], [1.0, -1.0]]) / np.sqrt(2)
+
+    A = A.copy()
+
+    for i in range(A.shape[1] - 1):
+        A[:, i : i + 2] = A[:, i : i + 2] @ rot45
+
+    return A
+
+
+def _ensure_nd_array(x, n=1):
+
+    x = np.asarray(x)
+
+    if x.ndim > n:
+        raise ValueError("too many dimensions on array")
+
+    # if x has too few dimensions, broadcast array
+    if x.ndim < n:
+        x = np.broadcast_to(x, x.shape + (1,) * (n - x.ndim))
+
+    return x
+
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))

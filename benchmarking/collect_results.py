@@ -379,8 +379,8 @@ def lasso_scaling_normal(results):
     direct_vals = [True, False, False]
     i_direct = [direct.index(tf) for tf in direct_vals]
 
-    results.test_risks = np.stack(
-        [results.test_risks[i, :, i_direct[i]] for i in range(len(ns))], axis=0
+    results.gen_risks = np.stack(
+        [results.gen_risks[i, :, i_direct[i]] for i in range(len(ns))], axis=0
     )
     results.cv_risks = np.stack(
         [results.cv_risks[i, :, i_direct[i], :] for i in range(len(ns))], axis=0
@@ -410,14 +410,14 @@ def lasso_scaling_normal(results):
     fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
     grouped_boxplot(
         [
-            results.test_risks,
+            results.gen_risks,
             results.cv_risks[..., i_k],
             results.alo_bks_risks[..., i_m1],
             results.alo_bks_risks[..., i_m2],
         ],
         [f"n={n}" for n in ns],
         [
-            "Test error",
+            "Conditional risk",
             f"CV($K={k}$)",
             f"BKS-ALO($m={m1}$)",
             f"BKS-ALO($m={m2}$)",
@@ -425,9 +425,9 @@ def lasso_scaling_normal(results):
         ax=axes[0],
     )
 
-    axes[0].set_title("Risk vs. Sample Size")
-    axes[0].set_ylabel("Squared Error")
-    axes[0].set_xlabel("Sample Size")
+    axes[0].set_title("Risk vs. sample size")
+    axes[0].set_ylabel("Squared error")
+    axes[0].set_xlabel("Sample size")
 
     axes[1].axhline(1, color="black", linestyle="--", label="Training")
     grouped_boxplot(
@@ -449,9 +449,9 @@ def lasso_scaling_normal(results):
         hatch_idx=[1, 2, 3],
     )
 
-    axes[1].set_title("Time vs. Sample Size")
-    axes[1].set_ylabel("Relative Time")
-    axes[1].set_xlabel("Sample Size")
+    axes[1].set_title("Time vs. sample size")
+    axes[1].set_ylabel("Relative time")
+    axes[1].set_xlabel("Sample size")
     # axes[1].set_yscale("log")
 
     plt.tight_layout()
@@ -464,14 +464,14 @@ def lasso_scaling_normal(results):
     fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
     grouped_boxplot(
         [
-            results.test_risks,
+            results.gen_risks,
             results.cv_risks[..., i_k],
             results.alo_bks_risks[..., i_m3],
             results.alo_poly_risks[..., i_m3],
         ],
         [f"n={n}" for n in ns],
         [
-            "Test error",
+            "Conditional risk",
             f"CV($K={k}$)",
             f"BKS-ALO($m={m3}$)",
             f"RandALO($m={m3}$)",
@@ -479,9 +479,9 @@ def lasso_scaling_normal(results):
         ax=axes[0],
     )
 
-    axes[0].set_title("Risk vs. Sample Size")
-    axes[0].set_ylabel("Squared Error")
-    axes[0].set_xlabel("Sample Size")
+    axes[0].set_title("Risk vs. sample size")
+    axes[0].set_ylabel("Squared error")
+    axes[0].set_xlabel("Sample size")
 
     axes[1].axhline(1, color="black", linestyle="--", label="Training")
     grouped_boxplot(
@@ -503,9 +503,9 @@ def lasso_scaling_normal(results):
         hatch_idx=[1, 2, 3],
     )
 
-    axes[1].set_title("Time vs. Sample Size")
-    axes[1].set_ylabel("Relative Time")
-    axes[1].set_xlabel("Sample Size")
+    axes[1].set_title("Time vs. sample size")
+    axes[1].set_ylabel("Relative time")
+    axes[1].set_xlabel("Sample size")
     # axes[1].set_yscale("log")
 
     plt.tight_layout()

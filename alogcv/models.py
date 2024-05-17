@@ -165,7 +165,10 @@ class ATD1APlusD2(ScipyLinearOperator):
 
 class SeparableRegularizerJacobian(LinearOperator):
 
-    supports_operator_matrix = True
+    # supports_operator_matrix = True
+    @property
+    def supports_operator_matrix(self):
+        return not self.issparse
 
     def __init__(
         self,
@@ -184,6 +187,7 @@ class SeparableRegularizerJacobian(LinearOperator):
             X = X.tocsc()
             self.issparse = True
             self.device = "cpu"
+            self._direct = False
         else:
             self.issparse = False
             self.device = X.device
