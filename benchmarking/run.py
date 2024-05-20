@@ -403,7 +403,10 @@ def model_lookup(config):
             lamda = method_kwargs.pop("lamda0") / np.sqrt(p)
         elif method_kwargs["penalty"] == "l2":
             lamda = method_kwargs.pop("lamda0")
-        return LogisticModel(lamda, sklearn_logistic_kwargs=method_kwargs)
+        direct = method_kwargs.pop("direct", None)
+        return LogisticModel(
+            lamda, sklearn_logistic_kwargs=method_kwargs, direct=direct
+        )
 
     if method == "random-forest":
         return RandomForestRegressorModel(sklearn_rf_kwargs=method_kwargs)
