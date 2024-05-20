@@ -8,7 +8,7 @@ with open("base_config.json") as f:
 
 os.makedirs("configs", exist_ok=True)
 
-for seed in range(10):
+for seed in range(100):
     config["seed"] = seed
 
     id = hashlib.sha256(json.dumps(config).encode()).hexdigest()[:8]
