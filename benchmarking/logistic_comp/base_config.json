@@ -15,7 +15,8 @@
         "lamda0": 1e0,
         "penalty": "l2",
         "fit_intercept": false,
-        "solver": "liblinear"
+        "solver": "liblinear",
+        "direct": true
     },
     "risk": "zero_one",
     "cv_k": [5],

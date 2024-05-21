@@ -230,7 +230,7 @@ class SeparableRegularizerJacobian(LinearOperator):
             if self._direct:
                 Z = torch.linalg.ldl_solve(self.LD, self.pivots, B)
             else:
-                Z = minres(self.H, B, tol=1e-3)
+                Z = minres(self.H, B)
         # sparse X case:
         else:
             B = self.X_mask.T @ A.detach().numpy()
