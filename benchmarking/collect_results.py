@@ -18,7 +18,7 @@ def setup_matplotlib():
     plt.rcParams["font.family"] = "serif"
     plt.rcParams["font.serif"] = "Times New Roman"
     plt.rcParams["font.size"] = 10
-    plt.rcParams["axes.titlesize"] = "small"
+    plt.rcParams["axes.titlesize"] = "medium"
     plt.rcParams["axes.titlepad"] = 3
     plt.rcParams["xtick.labelsize"] = "x-small"
     plt.rcParams["ytick.labelsize"] = plt.rcParams["xtick.labelsize"]
@@ -450,7 +450,7 @@ def lasso_scaling_normal(results):
     )
 
     axes[1].set_title("Time vs. sample size")
-    axes[1].set_ylabel("Relative time")
+    axes[1].set_ylabel("Time relative to model training")
     axes[1].set_xlabel("Sample size")
     # axes[1].set_yscale("log")
 
@@ -504,7 +504,7 @@ def lasso_scaling_normal(results):
     )
 
     axes[1].set_title("Time vs. sample size")
-    axes[1].set_ylabel("Relative time")
+    axes[1].set_ylabel("Time relative to model training")
     axes[1].set_xlabel("Sample size")
     # axes[1].set_yscale("log")
 
@@ -608,7 +608,10 @@ def lasso_bks_convergence(results):
     )
 
     axes[1].axhline(
-        np.median(results.test_risks), color="black", linestyle=":", label="Test error"
+        np.median(results.alo_exact_risks),
+        color="black",
+        linestyle=":",
+        label="Exact ALO",
     )
     # fill between interquartile range of test risk
     # xlim = np.asarray([0, np.max(ms_recip)])
@@ -617,7 +620,7 @@ def lasso_bks_convergence(results):
     xlim = np.asarray([np.min(ms), 300])
     axes[1].fill_between(
         xlim,
-        *np.percentile(results.test_risks, [5, 95])[:, None],
+        *np.percentile(results.alo_exact_risks, [5, 95])[:, None],
         facecolor="black",
         alpha=0.2,
     )
@@ -756,7 +759,7 @@ def general_comp(results, out_name, k=5, m=100):
     i_k = results.cv_k.index(k)
     i_m = results.alo_m.index(m)
 
-    fig, axes = plt.subplots(1, 2, figsize=(5, 4), dpi=300)
+    fig, axes = plt.subplots(1, 2, figsize=(3.25, 3), dpi=300)
 
     grouped_boxplot(
         [
@@ -774,16 +777,23 @@ def general_comp(results, out_name, k=5, m=100):
 
     grouped_boxplot(
         [
-            results.full_train_times,
-            results.cv_times[..., i_k],
-            results.alo_bks_times[..., i_m],
-            results.alo_poly_times[..., i_m],
+            # results.full_train_times,
+            results.cv_times[..., i_k] / results.full_train_times,
+            results.alo_bks_times[..., i_m] / results.full_train_times,
+            results.alo_poly_times[..., i_m] / results.full_train_times,
         ],
         [""],
-        ["Training", f"CV(K={k})", f"BKS-ALO(m={m})", f"RandALO(m={m})"],
+        [
+            # "Training",
+            f"CV(K={k})",
+            f"BKS-ALO(m={m})",
+            f"RandALO(m={m})",
+        ],
         ax=axes[1],
+        color_idx=[1, 2, 3],
+        hatch_idx=[1, 2, 3],
     )
-    axes[1].set_title("Time (s)")
+    axes[1].set_title("Time relative to training")
     axes[1].set_xticks([])
 
     plt.tight_layout()
@@ -810,17 +820,17 @@ def first_diff_scaling_1(results):
     ns_filter = [500, 1000, 2000, 5000]
     i_ns = [ns.index(n) for n in ns_filter]
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), dpi=300)
+    fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
     grouped_boxplot(
         [
-            results.test_risks[i_ns, ..., i_lamda0],
+            results.gen_risks[i_ns, ..., i_lamda0],
             results.cv_risks[i_ns, ..., i_lamda0, i_k],
             results.alo_bks_risks[i_ns, ..., i_lamda0, i_m],
             results.alo_poly_risks[i_ns, ..., i_lamda0, i_m],
         ],
         [f"n={n}" for n in ns_filter],
         [
-            "Test error",
+            "Conditional risk",
             f"CV($K={k}$)",
             f"BKS-ALO($m={m}$)",
             f"RandALO($m={m}$)",
@@ -828,26 +838,45 @@ def first_diff_scaling_1(results):
         ax=axes[0],
     )
 
-    axes[0].set_title("Risk vs. Sample Size")
-    axes[0].set_ylabel("Squared Error")
-    axes[0].set_xlabel("Sample Size")
+    axes[0].set_title("Risk vs. sample size")
+    axes[0].set_ylabel("Squared error")
+    axes[0].set_xlabel("Sample size")
 
+    # axes[1].axhline(1, color="black", linestyle="--", label="Training")
     grouped_boxplot(
         [
-            results.full_train_times[i_ns, ..., i_lamda0],
-            results.cv_times[i_ns, ..., i_lamda0, i_k],
-            results.alo_bks_times[i_ns, ..., i_lamda0, i_m],
-            results.alo_poly_times[i_ns, ..., i_lamda0, i_m],
+            # results.full_train_times[i_ns, ..., i_lamda0],
+            results.cv_times[i_ns, ..., i_lamda0, i_k]
+            / results.full_train_times[i_ns, ..., i_lamda0],
+            results.alo_bks_times[i_ns, ..., i_lamda0, i_m]
+            / results.full_train_times[i_ns, ..., i_lamda0],
+            results.alo_poly_times[i_ns, ..., i_lamda0, i_m]
+            / results.full_train_times[i_ns, ..., i_lamda0],
         ],
         [f"n={n}" for n in ns_filter],
-        ["Training", f"CV($K={k}$)", f"BKS-ALO($m={m}$)", f"RandALO($m={m}$)"],
+        [
+            # "Training",
+            f"CV($K={k}$)",
+            f"BKS-ALO($m={m}$)",
+            f"RandALO($m={m}$)",
+        ],
         ax=axes[1],
+        color_idx=[1, 2, 3],
+        hatch_idx=[1, 2, 3],
     )
 
-    axes[1].set_title("Time vs. Sample Size")
-    axes[1].set_ylabel("Time (s)")
-    axes[1].set_xlabel("Sample Size")
-    axes[1].set_yscale("log")
+    axes[1].set_title("Time vs. sample size")
+    axes[1].set_ylabel("Time relative to model training")
+    axes[1].set_xlabel("Sample size")
+    axes[1].set_yscale(
+        "function",
+        functions=(
+            lambda x: np.log(x - 1),
+            lambda x: np.exp(x) + 1,
+        ),
+    )
+    axes[1].set_yticks([1.01, 1.1, 2, 3, 4])
+    axes[1].set_ylim(1.001, 5)
 
     plt.tight_layout()
     plt.savefig(
