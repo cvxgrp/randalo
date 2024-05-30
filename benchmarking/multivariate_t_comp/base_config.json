@@ -14,7 +14,8 @@
     "method": "lasso",
     "method_kwargs": {
         "lamda0": 1,
-        "selection": "random"
+        "selection": "random",
+        "direct": true
     },
     "risk": "squared_error",
     "cv_k": [2, 5],
