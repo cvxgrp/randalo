@@ -9,7 +9,7 @@
         "p": 2000,
         "n_categories": 10,
         "s": 200,
-        "sigma": 0.1
+        "sigma": 1.0
     },
     "method": "lasso",
     "method_kwargs": {
