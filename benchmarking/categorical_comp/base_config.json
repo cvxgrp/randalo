@@ -9,11 +9,11 @@
         "p": 2000,
         "n_categories": 10,
         "s": 200,
-        "sigma": 1.0
+        "sigma": 0.7071067811865475
     },
     "method": "lasso",
     "method_kwargs": {
-        "lamda0": 0.3,
+        "lamda0": 1.0,
         "selection": "random"
     },
     "risk": "squared_error",
