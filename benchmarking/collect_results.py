@@ -6,7 +6,7 @@ import sys
 
 import numpy as np
 from scipy import stats
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, gridspec
 
 
 def setup_matplotlib():
@@ -304,8 +304,7 @@ def grouped_boxplot(
         )
         artists.append(artist)
 
-    if legend:
-        ax.legend(artists, group_labels)
+    return artists
 
 
 def scaling_subplots(results):
@@ -659,19 +658,19 @@ def lasso_sweep(results):
     markers = ["o", "s", "D", "v", "^", ">", "<", "p", "h", "H", "d", "P", "X"]
 
     data = [
-        results.test_risks,
+        results.gen_risks,
         results.cv_risks[..., i_k],
         results.alo_bks_risks[..., i_m],
         results.alo_poly_risks[..., i_m],
     ]
     labels = [
-        "Test error",
+        "Conditional risk",
         f"CV(K={k})",
         f"BKS-ALO(m={m})",
         f"RandALO(m={m})",
     ]
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), dpi=300)
+    fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
 
     for i, (label, color) in enumerate(zip(labels, color_cycle)):
         # shift markevery by 1 to avoid overlapping markers
@@ -690,18 +689,18 @@ def lasso_sweep(results):
 
     axes[0].set_xscale("log")
     axes[0].set_title("Risk")
-    axes[0].set_ylabel("Squared Error")
+    axes[0].set_ylabel("Squared error")
     axes[0].set_xlabel("Regularization parameter $\\lambda$")
     axes[0].legend()
 
     data = [
-        results.full_train_times,
-        results.cv_times[..., i_k],
-        results.alo_bks_times[..., i_m],
-        results.alo_poly_times[..., i_m],
+        # results.full_train_times,
+        results.cv_times[..., i_k] / results.full_train_times,
+        results.alo_bks_times[..., i_m] / results.full_train_times,
+        results.alo_poly_times[..., i_m] / results.full_train_times,
     ]
     labels = [
-        "Training",
+        # "Training",
         f"CV(K={k})",
         f"BKS-ALO(m={m})",
         f"RandALO(m={m})",
@@ -723,13 +722,125 @@ def lasso_sweep(results):
         )
 
     axes[1].set_xscale("log")
-    axes[1].set_yscale("log")
-    axes[1].set_title("Time (s)")
+    # axes[1].set_yscale("log")
+    axes[1].set_title("Time")
+    axes[1].set_ylabel("Time relative to model training")
     axes[1].set_xlabel("Regularization parameter $\\lambda$")
     axes[1].legend()
 
     plt.tight_layout()
     plt.savefig(os.path.join("figures", "lasso_sweep.pdf"), bbox_inches="tight")
+
+
+def lasso_cv_tradeoff(results):
+
+    axes_keys = [
+        ["config", "seed"],
+    ]
+
+    results = extract_all_results(results, axes_keys)
+    (seeds,) = results.axes
+    k = 5
+    i_k = results.cv_k.index(k)
+    m = 50
+    i_m = results.alo_m.index(m)
+
+
+def comp_all():
+
+    comps = [
+        "logistic_comp",
+        "categorical_comp",
+        "multivariate_t_comp",
+    ]
+    titles = [
+        "Logistic",
+        "Categorical",
+        "Multivariate $t$",
+    ]
+
+    # fig, axes = plt.subplots(1, 2 * len(comps), figsize=(6.5, 3), dpi=300)
+    fig = plt.figure(figsize=(6.0, 2.8), dpi=300)
+    outer = gridspec.GridSpec(2, len(comps), wspace=0.6, height_ratios=[1, 0])
+
+    axes_keys = [
+        ["config", "seed"],
+    ]
+    k = 5
+    m = 100
+
+    for i, comp in enumerate(comps):
+        results = load_results(os.path.join(comp, "results"))
+        results = extract_all_results(results, axes_keys)
+        seeds = results.axes[0]
+        i_k = results.cv_k.index(k)
+        i_m = results.alo_m.index(m)
+
+        inner = gridspec.GridSpecFromSubplotSpec(
+            1, 2, subplot_spec=outer[i], wspace=0, width_ratios=[5, 4]
+        )
+        ax1, ax2 = plt.subplot(inner[0]), plt.subplot(inner[1])
+
+        artists = grouped_boxplot(
+            [
+                results.gen_risks,
+                results.cv_risks[..., i_k],
+                results.alo_bks_risks[..., i_m],
+                results.alo_poly_risks[..., i_m],
+            ],
+            [""],
+            ["Test error", f"CV(K={k})", f"BKS-ALO(m={m})", f"RandALO(m={m})"],
+            ax=ax1,
+            legend=(i == 2),
+        )
+        ax1.set_title("Risk")
+        ax1.set_xticks([])
+
+        if i == 2:
+            ax1.legend(
+                artists,
+                [
+                    "Conditional risk",
+                    f"CV(K={k})",
+                    f"BKS-ALO(m={m})",
+                    f"RandALO(m={m})",
+                ],
+                loc=(2.4, 0.4),
+                frameon=False,
+            )
+
+        grouped_boxplot(
+            [
+                results.cv_times[..., i_k] / results.full_train_times,
+                results.alo_bks_times[..., i_m] / results.full_train_times,
+                results.alo_poly_times[..., i_m] / results.full_train_times,
+            ],
+            [""],
+            [
+                f"CV(K={k})",
+                f"BKS-ALO(m={m})",
+                f"RandALO(m={m})",
+            ],
+            ax=ax2,
+            legend=False,
+            color_idx=[1, 2, 3],
+            hatch_idx=[1, 2, 3],
+        )
+        ax2.set_title("Time")
+        ax2.set_xticks([])
+        yticks = ax2.get_yticks()
+        ax2.set_yticks(yticks)
+        ax2.set_yticklabels(f"{y:.1f}" for y in yticks)
+
+        # ax2.set_yticks(axes[0].get_yticks())
+        ax2.yaxis.tick_right()
+
+        ax3 = plt.subplot(outer[len(comps) + i])
+        ax3.set_title(titles[i])
+        ax3.axis("off")
+
+    # plt.tight_layout(pad=0.1)
+    plt.savefig(os.path.join("figures", "comp_all.pdf"), bbox_inches="tight")
 
 
 def categorical_comp(results):
@@ -1056,11 +1167,13 @@ def truncated_normal_viz():
 collect_mapping = {
     "categorical_comp": categorical_comp,
     "lasso_bks_convergence": lasso_bks_convergence,
+    "lasso_cv_tradeoff": lasso_cv_tradeoff,
     "lasso_scaling_normal": lasso_scaling_normal,
     "lasso_sweep": lasso_sweep,
     "logistic_comp": logistic_comp,
     "multivariate_t_comp": multivariate_t_comp,
     "random_forest_comp": random_forest_comp,
+    "comp_all": comp_all,
     "truncated_normal_viz": truncated_normal_viz,
     "first_diff_scaling_1": first_diff_scaling_1,
 }
