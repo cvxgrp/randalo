@@ -23,6 +23,8 @@ from alogcv.models import (
     LogisticModel,
     RandomForestRegressorModel,
 )
+from alogcv.adelie_models import AdelieLassoModel
+
 from alogcv.utils import GaussianGridIntegrator, sigmoid
 
 
@@ -396,6 +398,10 @@ def model_lookup(config):
     if method == "first-difference":
         lamda = method_kwargs.pop("lamda0")
         return FirstDifferenceModel(lamda, cvxpy_kwargs=method_kwargs)
+
+    if method == "adelie-lasso":
+        lamda = method_kwargs.pop("lamda0")
+        return AdelieLassoModel(lamda)
 
     if method == "logistic":
         p = config["data"]["p"]

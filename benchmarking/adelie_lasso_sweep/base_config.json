@@ -1,0 +1,22 @@
+{
+    "id": "test",
+    "seed": 0,
+    "device": "cpu",
+    "data": {
+        "src": "iid_normal_sparse_awgn",
+        "n_train": 5000,
+        "n_test": 10000,
+        "p": 25000,
+        "s": 250,
+        "sigma": 2
+    },
+    "method": "adelie-lasso",
+    "method_kwargs": {
+        "lamda0": 1.0,
+        "fit_intercept": false
+    },
+    "risk": "squared_error",
+    "alo_exact": false,
+    "cv_k": [5],
+    "alo_m": [10, 30, 50, 100, 300] 
+}
