@@ -35,8 +35,10 @@ class AdelieLassoModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
     @property
     def reg_hessian_diag_(self):
         self._fitted_check()
+        breakpoint()
         hess = np.zeros(self.X.shape[1])
-        hess[np.abs(self.model.coef_) <= 1e-8] = float("inf")
+        x = np.abs(self.model.coef_)
+        hess[x <= 1e-5 * x.max()] = float("inf")
         return torch.tensor(hess)
 
     @staticmethod

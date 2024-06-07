@@ -12,7 +12,7 @@
     },
     "method": "adelie-lasso",
     "method_kwargs": {
-        "lamda0": 1.0,
+        "lamda0": 0.01,
         "fit_intercept": false
     },
     "risk": "squared_error",

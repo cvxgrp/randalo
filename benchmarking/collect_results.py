@@ -1170,6 +1170,7 @@ collect_mapping = {
     "lasso_cv_tradeoff": lasso_cv_tradeoff,
     "lasso_scaling_normal": lasso_scaling_normal,
     "lasso_sweep": lasso_sweep,
+    "adelie_lasso_sweep": lasso_sweep,
     "logistic_comp": logistic_comp,
     "multivariate_t_comp": multivariate_t_comp,
     "random_forest_comp": random_forest_comp,
