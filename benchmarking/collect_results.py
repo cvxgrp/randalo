@@ -304,6 +304,9 @@ def grouped_boxplot(
         )
         artists.append(artist)
 
+    if legend:
+        ax.legend(artists, group_labels)
+
     return artists
 
 
@@ -424,11 +427,11 @@ def lasso_scaling_normal(results):
         ax=axes[0],
     )
 
-    axes[0].set_title("Risk vs. sample size")
+    # axes[0].set_title("Risk vs. sample size")
     axes[0].set_ylabel("Squared error")
     axes[0].set_xlabel("Sample size")
 
-    axes[1].axhline(1, color="black", linestyle="--", label="Training")
+    # axes[1].axhline(1, color="black", linestyle="--", label="Training")
     grouped_boxplot(
         [
             # results.full_train_times / results.full_train_times,
@@ -446,9 +449,10 @@ def lasso_scaling_normal(results):
         ax=axes[1],
         color_idx=[1, 2, 3],
         hatch_idx=[1, 2, 3],
+        legend=False,
     )
 
-    axes[1].set_title("Time vs. sample size")
+    # axes[1].set_title("Time vs. sample size")
     axes[1].set_ylabel("Time relative to model training")
     axes[1].set_xlabel("Sample size")
     # axes[1].set_yscale("log")
@@ -478,11 +482,11 @@ def lasso_scaling_normal(results):
         ax=axes[0],
     )
 
-    axes[0].set_title("Risk vs. sample size")
+    # axes[0].set_title("Risk vs. sample size")
     axes[0].set_ylabel("Squared error")
     axes[0].set_xlabel("Sample size")
 
-    axes[1].axhline(1, color="black", linestyle="--", label="Training")
+    # axes[1].axhline(1, color="black", linestyle="--", label="Training")
     grouped_boxplot(
         [
             # results.full_train_times / results.full_train_times,
@@ -500,9 +504,10 @@ def lasso_scaling_normal(results):
         ax=axes[1],
         color_idx=[1, 2, 3],
         hatch_idx=[1, 2, 3],
+        legend=False,
     )
 
-    axes[1].set_title("Time vs. sample size")
+    # axes[1].set_title("Time vs. sample size")
     axes[1].set_ylabel("Time relative to model training")
     axes[1].set_xlabel("Sample size")
     # axes[1].set_yscale("log")
@@ -569,7 +574,7 @@ def lasso_bks_convergence(results):
     axes[0].set_xlim(xlim)
     axes[0].set_ylim(ylim)
     axes[0].set_title("Linear fit estimation of $R_0$")
-    axes[0].set_xlabel("Reciprocal number of matvecs $1/m$")
+    axes[0].set_xlabel("Reciprocal number of Jacobian--vector products $1/m$")
     axes[0].set_ylabel("Risk estimate")
     axes[0].legend(loc="upper left")
 
@@ -579,35 +584,8 @@ def lasso_bks_convergence(results):
     # ms_recip = ms
     # ms_recip = np.concatenate([1 / ms[:-1], [0.0]])
 
-    axes[1].plot(
-        ms,
-        np.median(results.alo_bks_risks, axis=0).T,
-        "--",
-        color=color_cycle[0],
-        label="BKS-ALO",
-    )
-    axes[1].plot(
-        ms,
-        np.median(results.alo_poly_risks, axis=0).T,
-        color=color_cycle[1],
-        label="RandALO",
-    )
-
-    axes[1].fill_between(
-        ms,
-        *np.percentile(results.alo_bks_risks, [5, 95], axis=0),
-        color=color_cycle[0],
-        alpha=0.2,
-    )
-    axes[1].fill_between(
-        ms,
-        *np.percentile(results.alo_poly_risks, [5, 95], axis=0),
-        color=color_cycle[1],
-        alpha=0.2,
-    )
-
     axes[1].axhline(
-        np.median(results.alo_exact_risks),
+        np.mean(results.alo_exact_risks),
         color="black",
         linestyle=":",
         label="Exact ALO",
@@ -619,17 +597,50 @@ def lasso_bks_convergence(results):
     xlim = np.asarray([np.min(ms), 300])
     axes[1].fill_between(
         xlim,
-        *np.percentile(results.alo_exact_risks, [5, 95])[:, None],
+        np.mean(results.alo_exact_risks) - np.std(results.alo_exact_risks),
+        np.mean(results.alo_exact_risks) + np.std(results.alo_exact_risks),
         facecolor="black",
         alpha=0.2,
     )
+
+    axes[1].plot(
+        ms,
+        np.mean(results.alo_bks_risks, axis=0).T,
+        "--",
+        color=color_cycle[0],
+        label="BKS-ALO",
+    )
+    axes[1].plot(
+        ms,
+        np.mean(results.alo_poly_risks, axis=0).T,
+        color=color_cycle[1],
+        label="RandALO",
+    )
+
+    axes[1].fill_between(
+        ms,
+        np.mean(results.alo_bks_risks, axis=0) - np.std(results.alo_bks_risks, axis=0),
+        np.mean(results.alo_bks_risks, axis=0) + np.std(results.alo_bks_risks, axis=0),
+        color=color_cycle[0],
+        alpha=0.2,
+    )
+    axes[1].fill_between(
+        ms,
+        np.mean(results.alo_poly_risks, axis=0)
+        - np.std(results.alo_poly_risks, axis=0),
+        np.mean(results.alo_poly_risks, axis=0)
+        + np.std(results.alo_poly_risks, axis=0),
+        color=color_cycle[1],
+        alpha=0.2,
+    )
+
     ylim = axes[1].get_ylim()
 
     axes[1].set_xlim(xlim)
     axes[1].set_ylim(ylim)
 
     axes[1].set_title("Convergence to ALO")
-    axes[1].set_xlabel("Number of matvecs $m$")
+    axes[1].set_xlabel("Number of Jacobian--vector products $m$")
     axes[1].set_ylabel("Risk estimate")
     axes[1].legend()
 
@@ -655,7 +666,8 @@ def lasso_sweep(results):
     i_m = results.alo_m.index(m)
 
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    markers = ["o", "s", "D", "v", "^", ">", "<", "p", "h", "H", "d", "P", "X"]
+    markers = ["D", "o", "s", "v", "^", ">", "<", "p", "h", "H", "d", "P", "X"]
+    linestyle = [":", "-", "--", "-."]
 
     data = [
         results.gen_risks,
@@ -665,9 +677,9 @@ def lasso_sweep(results):
     ]
     labels = [
         "Conditional risk",
-        f"CV(K={k})",
-        f"BKS-ALO(m={m})",
-        f"RandALO(m={m})",
+        f"CV($K={k}$)",
+        f"BKS-ALO($m={m}$)",
+        f"RandALO($m={m}$)",
     ]
 
     fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
@@ -681,6 +693,7 @@ def lasso_sweep(results):
             yerr=np.std(data[i], axis=1),
             label=label,
             color=color,
+            linestyle=linestyle[i],
             marker=markers[i],
             markevery=markevery,
             errorevery=markevery,
@@ -688,7 +701,7 @@ def lasso_sweep(results):
         )
 
     axes[0].set_xscale("log")
-    axes[0].set_title("Risk")
+    # axes[0].set_title("Risk")
     axes[0].set_ylabel("Squared error")
     axes[0].set_xlabel("Regularization parameter $\\lambda$")
     axes[0].legend()
@@ -706,7 +719,7 @@ def lasso_sweep(results):
         f"RandALO(m={m})",
     ]
 
-    for i, (label, color) in enumerate(zip(labels, color_cycle)):
+    for i, (label, color) in enumerate(zip(labels, color_cycle[1:])):
         # shift markevery by 1 to avoid overlapping markers
         markevery = (i, len(data))
         axes[1].errorbar(
@@ -715,7 +728,8 @@ def lasso_sweep(results):
             yerr=np.std(data[i], axis=1),
             label=label,
             color=color,
-            marker=markers[i],
+            linestyle=linestyle[i + 1],
+            marker=markers[i + 1],
             markevery=markevery,
             errorevery=markevery,
             capsize=2,
@@ -723,10 +737,10 @@ def lasso_sweep(results):
 
     axes[1].set_xscale("log")
     # axes[1].set_yscale("log")
-    axes[1].set_title("Time")
+    # axes[1].set_title("Time")
     axes[1].set_ylabel("Time relative to model training")
     axes[1].set_xlabel("Regularization parameter $\\lambda$")
-    axes[1].legend()
+    # axes[1].legend()
 
     plt.tight_layout()
     plt.savefig(os.path.join("figures", "lasso_sweep.pdf"), bbox_inches="tight")
@@ -740,23 +754,195 @@ def lasso_cv_tradeoff(results):
 
     results = extract_all_results(results, axes_keys)
     (seeds,) = results.axes
-    k = 5
-    i_k = results.cv_k.index(k)
-    m = 50
-    i_m = results.alo_m.index(m)
+    ks = [2, 3, 5, 10, 20]
+    i_k = [results.cv_k.index(k) for k in ks]
+    ms = [10, 30, 100, 300, 1000, 3000]
+    i_m = [results.alo_m.index(m) for m in ms]
+
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    marker_cycle = ["o", "s", "v", "D", "^", "*", "<", "p", "h", "H", "d", "P", "X"]
+
+    fig = plt.figure(figsize=(6.5, 3), dpi=300)
+
+    gen_risk = np.mean(results.gen_risks)
+
+    def plot_tradeoff(times, risks, marker, color, label, linestyle):
+        risks = risks / gen_risk - 1
+        risks_mean = np.mean(risks, axis=0)
+        risks_sign = np.sign(risks_mean)
+        risks_abs = np.abs(risks_mean)
+        plt.plot(
+            np.mean(times, axis=0),
+            risks_abs,
+            marker=marker,
+            color=color,
+            linestyle=linestyle,
+            label=label,
+        )
+        return
+        # quartiles
+        # x_lower = np.quantile(times, 0.25, axis=0)
+        # x_upper = np.quantile(times, 0.75, axis=0)
+        # y_lower0 = np.quantile(risks, 0.25, axis=0)
+        # y_upper0 = np.quantile(risks, 0.75, axis=0)
+
+        # standard deviations
+        x_lower = np.mean(times, axis=0) - np.std(times, axis=0)
+        x_upper = np.mean(times, axis=0) + np.std(times, axis=0)
+        y_lower0 = np.mean(risks, axis=0) - np.std(risks, axis=0)
+        y_upper0 = np.mean(risks, axis=0) + np.std(risks, axis=0)
+
+        # standard errors
+        # x_lower = np.mean(times, axis=0) - np.std(times, axis=0) / np.sqrt(len(seeds))
+        # x_upper = np.mean(times, axis=0) + np.std(times, axis=0) / np.sqrt(len(seeds))
+        # y_lower0 = np.mean(risks, axis=0) - np.std(risks, axis=0) / np.sqrt(len(seeds))
+        # y_upper0 = np.mean(risks, axis=0) + np.std(risks, axis=0) / np.sqrt(len(seeds))
+
+        y_lower = y_lower0.copy()
+        y_lower[risks_sign == -1] = -y_upper0[risks_sign == -1]
+        y_upper = y_upper0.copy()
+        y_upper[risks_sign == -1] = -y_lower0[risks_sign == -1]
+        plt.fill(
+            np.concatenate([x_upper, x_lower[::-1]]),
+            np.concatenate([y_upper, y_lower[::-1]]),
+            color,
+            alpha=0.2,
+        )
+        for i in range(times.shape[1]):
+            plt.scatter(
+                np.mean(times[:, i]),
+                risks_abs[i],
+                s=15 if i == 2 else None,
+                marker=marker_cycle[i],
+                color=color,
+                zorder=10,
+            )
+
+    plot_tradeoff(
+        results.cv_times[..., i_k] / results.full_train_times[:, None],
+        results.cv_risks[..., i_k],
+        marker_cycle[0],
+        color_cycle[0],
+        "$K$-fold CV",
+        "-",
+    )
+    plot_tradeoff(
+        results.alo_bks_times[..., i_m] / results.full_train_times[:, None],
+        results.alo_bks_risks[..., i_m],
+        marker_cycle[1],
+        color_cycle[1],
+        "BKS-ALO",
+        "--",
+    )
+    plot_tradeoff(
+        results.alo_poly_times[..., i_m] / results.full_train_times[:, None],
+        results.alo_poly_risks[..., i_m],
+        marker_cycle[2],
+        color_cycle[2],
+        "RandALO",
+        "-.",
+    )
+
+    plt.scatter(
+        [np.mean(results.alo_exact_times / results.full_train_times)],
+        [np.abs(np.mean(results.alo_exact_risks) / gen_risk - 1)],
+        marker="D",
+        color="red",
+        label="Exact ALO",
+    )
+
+    plt.axhline(
+        np.std(results.gen_risks) / gen_risk / np.sqrt(len(seeds)),
+        color="black",
+        linestyle=":",
+        label="True risk standard error",
+    )
+    plt.xscale("log")
+    plt.yscale("symlog", linthresh=0.01)
+    plt.yticks(
+        [0, 0.005, 0.01, 0.03, 0.1, 0.3],
+        [
+            "$0$",
+            "$0.5\\%$",
+            "$1\\%$",
+            "$3\\%$",
+            "$10\\%$",
+            "$30\\%$",
+        ],
+    )
+    plt.xticks(
+        [2, 5, 10, 20], ["$2\\times$", "$5\\times$", "$10\\times$", "$20\\times$"]
+    )
+    plt.ylim(0, 0.5)
+
+    plt.xlabel("Time relative to full model training")
+    plt.ylabel("Relative risk estimation bias")
+    plt.title("Pareto efficiency of randomized ALO")
+
+    plt.tight_layout()
+
+    # plt.legend(loc=(1.02, 0.35), frameon=False)
+    plt.legend(loc="upper right")
+
+    # # add custom legend
+    # ax = fig.add_axes([0.98, 0.17, 0.2, 0.5])
+    # ax.axis("off")
+    # ax.set_aspect("equal")
+
+    # # Table data preparation
+    # table_data = []
+    # for marker, k, m in zip(marker_cycle, ks + [""], ms):
+    #     table_data.append([marker, str(k), str(m)])
+
+    # # Define the cell text and cell colors
+    # cell_text = []
+    # for row in table_data:
+    #     cell_text.append([f"$\\{row[0]}$", row[1], row[2]])
+
+    # # Create the table
+    # table = plt.table(
+    #     cellText=cell_text,
+    #     colLabels=["", "$K$(CV)", "$m$(ALO)"],
+    #     cellLoc="center",
+    #     loc="center",
+    #     edges="open",
+    # )
+
+    # # Adjust table properties
+    # table.auto_set_font_size(False)
+    # table.set_fontsize(8)
+    # # table.scale(1, 2)  # Scale the table
+
+    # # Replace the first column text with markers
+    # ax.scatter([0], [0.01], alpha=0)
+    # ax.scatter([1], [0.92], alpha=0)
+    # for i, marker in enumerate(marker_cycle[:6], start=1):
+    #     table[(i, 0)]._text.set_text("XX")
+    #     table[(i, 0)]._text.set_color("white")
+    #     ax.scatter(
+    #         0.1,
+    #         0.8 - table[(i, 0)].get_height() * i,
+    #         marker=marker,
+    #         color="black",
+    #         linestyle="",
+    #     )
+
+    # table.auto_set_column_width(col=list(range(len(table_data[0]))))
+
+    plt.savefig(os.path.join("figures", "lasso_cv_tradeoff.pdf"), bbox_inches="tight")
 
 
 def comp_all():
 
     comps = [
         "logistic_comp",
-        "categorical_comp",
         "multivariate_t_comp",
+        "categorical_comp",
     ]
     titles = [
         "Logistic",
-        "Categorical",
         "Multivariate $t$",
+        "Categorical",
     ]
 
     # fig, axes = plt.subplots(1, 2 * len(comps), figsize=(6.5, 3), dpi=300)
@@ -789,7 +975,7 @@ def comp_all():
                 results.alo_poly_risks[..., i_m],
             ],
             [""],
-            ["Test error", f"CV(K={k})", f"BKS-ALO(m={m})", f"RandALO(m={m})"],
+            ["Test error", f"CV($K={k}$)", f"BKS-ALO($m={m}$)", f"RandALO($m={m}$)"],
             ax=ax1,
             legend=(i == 2),
         )
@@ -801,9 +987,9 @@ def comp_all():
                 artists,
                 [
                     "Conditional risk",
-                    f"CV(K={k})",
-                    f"BKS-ALO(m={m})",
-                    f"RandALO(m={m})",
+                    f"CV($K={k}$)",
+                    f"BKS-ALO($m={m}$)",
+                    f"RandALO($m={m}$)",
                 ],
                 loc=(2.4, 0.4),
                 frameon=False,
@@ -817,9 +1003,9 @@ def comp_all():
             ],
             [""],
             [
-                f"CV(K={k})",
-                f"BKS-ALO(m={m})",
-                f"RandALO(m={m})",
+                f"CV($K={k}$)",
+                f"BKS-ALO($m={m}$)",
+                f"RandALO($m={m}$)",
             ],
             ax=ax2,
             legend=False,
@@ -949,7 +1135,7 @@ def first_diff_scaling_1(results):
         ax=axes[0],
     )
 
-    axes[0].set_title("Risk vs. sample size")
+    # axes[0].set_title("Risk vs. sample size")
     axes[0].set_ylabel("Squared error")
     axes[0].set_xlabel("Sample size")
 
@@ -974,9 +1160,10 @@ def first_diff_scaling_1(results):
         ax=axes[1],
         color_idx=[1, 2, 3],
         hatch_idx=[1, 2, 3],
+        legend=False,
     )
 
-    axes[1].set_title("Time vs. sample size")
+    # axes[1].set_title("Time vs. sample size")
     axes[1].set_ylabel("Time relative to model training")
     axes[1].set_xlabel("Sample size")
     axes[1].set_yscale(
