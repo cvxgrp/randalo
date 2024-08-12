@@ -3,5 +3,6 @@ scipy
 torch
 scikit-learn
 matplotlib
+pandas
 git+ssh://git@github.com/cvxgrp/torch_linops.git
 -e .
