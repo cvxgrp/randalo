@@ -1,18 +1,14 @@
 {
     "id": "test",
-    "seed": 3,
+    "seed": 0,
     "device": "cpu",
     "data": {
-        "src": "iid_normal_logistic_sparse",
-        "n_train": 5000,
-        "n_test": 10000,
-        "p": 5000,
-        "s": 1000,
-        "rho": 5.0
+        "src": "kddcup09_upselling",
+        "p": 71905
     },
     "method": "logistic",
     "method_kwargs": {
-        "lamda0": 1e0,
+        "lamda0": 100.0,
         "penalty": "l2",
         "fit_intercept": false,
         "solver": "liblinear"
@@ -20,5 +16,5 @@
     "risk": "zero_one",
     "cv_k": [2, 5],
     "alo_exact": false,
-    "alo_m": [10, 30, 50, 100, 300] 
+    "alo_m": [10, 30, 50] 
 }

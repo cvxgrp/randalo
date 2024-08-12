@@ -3,17 +3,18 @@
     "seed": 0,
     "device": "cpu",
     "data": {
-        "src": "iid_normal_sparse_awgn",
-        "n_train": 5000,
+        "src": "iid_normal_sparse_poly_awgn",
+        "n_train": 1000,
         "n_test": 10000,
-        "p": 5000,
-        "s": 500,
+        "p": 200,
+        "ord": 3,
+        "s": 20,
         "sigma": 1.0
     },
-    "method": "lasso",
+    "method": "random-forest",
     "method_kwargs": {
-        "lamda0": 1.0,
-        "direct": false
+        "n_estimators": 100,
+        "max_depth": 1
     },
     "risk": "squared_error",
     "alo_exact": true,

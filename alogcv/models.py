@@ -1,17 +1,17 @@
-from abc import ABC, abstractmethod, abstractstaticmethod
+from abc import ABC, abstractmethod
 from typing import Optional
 
 import numpy as np
+import scipy
 from scipy import sparse
-from scipy.sparse.linalg import (
-    LinearOperator as ScipyLinearOperator,
-    minres as scipy_minres,
-)
+from scipy.sparse.linalg import LinearOperator as ScipyLinearOperator
 import torch
 
+from sklearn.base import BaseEstimator
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import Lasso, LogisticRegression
+from sklearn.metrics.pairwise import linear_kernel, rbf_kernel
 
 
 import linops as lo
@@ -94,7 +94,8 @@ class ALOModel(ABC):
         if not self.fitted:
             raise NotFittedError("Model has not yet been fit")
 
-    @abstractstaticmethod
+    @staticmethod
+    @abstractmethod
     def loss_fun(y, y_hat):
         pass
 
@@ -234,7 +235,7 @@ class SeparableRegularizerJacobian(LinearOperator):
         # sparse X case:
         else:
             B = self.X_mask.T @ A.detach().numpy()
-            Z = scipy_minres(self.H, B)[0]
+            Z = sparse.linalg.cg(self.H, B)[0]
             need_squeeze = False
 
         if need_squeeze:
@@ -556,6 +557,185 @@ class LogisticModel(LinearMixin, SeparableRegularizerMixin, ALOModel):
             hess = np.ones(self.X.shape[1]) * self.lamda
 
         return torch.tensor(hess)
+
+    @staticmethod
+    def loss_fun(y, y_hat):
+        return torch.log(1 + torch.exp(-y * y_hat))
+
+
+class KernelLogisticRegression(BaseEstimator):
+    """Kernel Logistic Regression model
+
+    The optimization objective is given by
+    ```
+    sum_i log(1 + exp(-y_i * <k_i, a>)) + lamda / 2 * <a, K a>
+    ```
+    where `k_i` is the ith row of the kernel matrix `K` and `a` is the
+    parameter vector.
+
+    """
+
+    def __init__(
+        self,
+        lamda=1.0,
+        kernel_fun="linear",
+        kernel_fun_kwargs={},
+        system="K",
+        solver="cg",
+        max_iter=20,
+        tol=1e-6,
+    ):
+
+        self.lamda = lamda
+
+        if kernel_fun == "linear":
+            kernel_fun = linear_kernel
+        elif kernel_fun == "rbf":
+            kernel_fun = rbf_kernel
+        self.kernel_fun = kernel_fun
+        self.kernel_fun_kwargs = kernel_fun_kwargs
+
+        self.system = system
+        self.solver = solver
+        self.max_iter = max_iter
+        self.tol = tol
+
+    def fit(self, X, y):
+        self.X = X
+        self.y = y
+        self.alpha = np.zeros(X.shape[0])
+        self.K = self.kernel_fun(X, X, **self.kernel_fun_kwargs)
+        self.z = self.K @ self.alpha
+
+        self.converged = False
+        self.iters = 0
+
+        for _ in range(self.max_iter):
+            self._newton_step()
+            if self.converged:
+                break
+
+        if not self.converged:
+            print("Warning: did not converge")
+
+        return self
+
+    def predict(self, X):
+        # NOTE: this is the decision function, not the class prediction
+        K = self.kernel_fun(X, self.X, **self.kernel_fun_kwargs)
+        z = K @ self.alpha
+        return z
+
+    def _newton_step(self):
+        sigm = torch.sigmoid(torch.tensor(-self.y * self.z)).detach().numpy()
+        sigm = np.clip(sigm, 1e-15, 1 - 1e-15)
+        ell_dot = -self.y * sigm
+        ell_ddot = sigm * (1 - sigm)
+        # ell_dot = -self.y / (1 + np.exp(self.y * self.z))
+        # ell_ddot = 1 / (1 + np.exp(self.y * self.z)) / (1 + np.exp(-self.y * self.z))
+
+        if self.system == "KLK":
+            A = self.K @ (ell_ddot[:, None] * self.K) + self.lamda * self.K
+            b = self.K @ (ell_dot + self.lamda * self.alpha)
+        elif self.system == "K":
+            A = self.K + self.lamda * np.diag(1 / ell_ddot)
+            b = (ell_dot + self.lamda * self.alpha) / ell_ddot
+        else:
+            raise ValueError("Unknown system")
+
+        if self.solver == "solve":
+            step = np.linalg.solve(A, b)
+        elif self.solver == "cg":
+            # Use a preconditioner to speed up convergence
+            M = sparse.diags(1 / np.diag(A))
+            step = sparse.linalg.cg(A, b, M=M)[0]
+        elif self.solver == "cho":
+            c, lower = scipy.linalg.cho_factor(A, lower=True)
+            step = scipy.linalg.cho_solve((c, lower), b)
+        else:
+            raise ValueError("Unknown solver")
+
+        self.alpha -= step
+        self.z = self.K @ self.alpha
+        self.iters += 1
+
+        if np.linalg.norm(step) / np.linalg.norm(self.alpha) < self.tol:
+            self.converged = True
+
+
+class KernelRidgeJacobian(LinearOperator):
+
+    supports_operator_matrix = True
+
+    def __init__(
+        self, K, loss_hessian_diag, loss_dy_dy_hat_diag, lamda, solver="minres"
+    ):
+        self._shape = K.shape
+        self.dtype = K.dtype
+        self.device = K.device
+        self.K = K
+        self.loss_hessian_diag = loss_hessian_diag
+        self.loss_dy_dy_hat_diag = loss_dy_dy_hat_diag
+        self.lamda = lamda
+        self.solver = solver
+
+        self.H = self.K + lamda * torch.diag(1 / self.loss_hessian_diag)
+        if solver == "cho":
+            self.LD, self.pivots = torch.linalg.ldl_factor(self.H)
+
+    def _matmul_impl(self, A):
+        if A.ndim == 1:
+            A = A[:, None]
+            need_squeeze = True
+        else:
+            need_squeeze = False
+
+        A = -self.loss_dy_dy_hat_diag[:, None] / self.loss_hessian_diag[:, None] * A
+        if self.solver == "minres":
+            with torch.no_grad():
+                M = lo.DiagonalOperator(1 / torch.diag(self.H))
+                Z = minres(self.H, A, M=M, tol=1e-12)
+        else:
+            raise ValueError(f"Unknown solver {self.solver}")
+
+        if need_squeeze:
+            Z = Z[..., 0]
+
+        return self.K @ Z
+
+    def todense(self):
+        if self.solver == "cho":
+            LD, pivots = self.LD, self.pivots
+        LD, pivots = torch.linalg.ldl_factor(self.H)
+        return (
+            -torch.linalg.ldl_solve(LD, pivots, self.K).T
+            * self.loss_dy_dy_hat_diag[None, :]
+            / self.loss_hessian_diag[None, :]
+        )
+
+    @property
+    def diag(self):
+        return torch.diag(self.todense())
+
+
+class KernelLogisticModel(ALOModel):
+
+    def __init__(self, lamda, kernel_logistic_kwargs):
+        super().__init__()
+        self.lamda = lamda
+        self.kernel_logistic_kwargs = kernel_logistic_kwargs
+
+    def fit(self, X, y):
+        super().fit(X, y)
+        self._K = torch.tensor(self.model.K)
+
+    def get_new_model(self):
+        return KernelLogisticRegression(lamda=self.lamda, **self.kernel_logistic_kwargs)
+
+    def _compute_jac(self, device=None):
+        return KernelRidgeJacobian(
+            self._K.to(device), self._d2loss_dy_hat2, self._d2loss_dboth, self.lamda
+        )
 
     @staticmethod
     def loss_fun(y, y_hat):

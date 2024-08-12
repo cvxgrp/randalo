@@ -9,7 +9,7 @@ import torch
 
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
-from sklearn.datasets import fetch_openml
+from sklearn.datasets import fetch_openml, fetch_rcv1
 from sklearn.impute import SimpleImputer, MissingIndicator
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -21,9 +21,14 @@ from alogcv.models import (
     LassoModel,
     FirstDifferenceModel,
     LogisticModel,
+    KernelLogisticModel,
     RandomForestRegressorModel,
 )
-from alogcv.adelie_models import AdelieLassoModel
+
+try:
+    from alogcv.adelie_models import AdelieLassoModel
+except ImportError:
+    print("Warning: Adelie not installed")
 
 from alogcv.utils import GaussianGridIntegrator, sigmoid
 
@@ -183,6 +188,62 @@ def load_kddcup09(task):
         y_train = np.loadtxt(f)
 
     return X_train, y_train
+
+
+def load_rcv1(n_train=20000, n_test=50000, rng=None):
+
+    rcv1 = fetch_rcv1()
+    # construct a binary classification task
+    targets = ["GCAT", "CCAT"]
+    target_idx = [np.where(rcv1.target_names == t)[0][0] for t in targets]
+
+    # filter down to documents with only one of the two labels
+    y_full = rcv1.target[:, target_idx]
+    binary_idx = y_full.sum(axis=1).A1 == 1
+    y_full = y_full[binary_idx][:, 0].toarray().ravel().astype(float) * 2 - 1
+    X_full = rcv1.data[binary_idx, :].astype(float)
+
+    # split into train and test sets
+    if rng is None:
+        rng = np.random.default_rng()
+    idx = rng.permutation(X_full.shape[0])[: n_train + n_test]
+    train_idx = idx[:n_train]
+
+    # filter words that appear in at least 1 train document
+    X_train = X_full[train_idx, :]
+    keep_idx = np.array(X_train.sum(axis=0) > 0).ravel()
+    X_full = X_full[idx, :][:, keep_idx]
+    p = X_full.shape[1]
+    log(f"Number of words: {p}")
+    y_full = y_full[idx]
+
+    # split into train and test sets
+    X_train = X_full[:n_train, :]
+    y_train = y_full[:n_train]
+    X_test = X_full[n_train:, :]
+    y_test = y_full[n_train:]
+
+    return X_train, y_train, X_test, y_test
+
+
+def load_fashoin_mnist(n_train=12000, n_test=2000, rng=None):
+
+    X, y = fetch_openml("Fashion-MNIST", version=1, return_X_y=True, as_frame=False)
+    X = X.astype(float)
+    task_idx = np.where(np.logical_or(y == "2", y == "4"))
+    X = X[task_idx]
+    y = (y[task_idx] == "2").astype(float) * 2 - 1
+
+    if rng is None:
+        rng = np.random.default_rng()
+    idx = rng.permutation(X.shape[0])[: n_train + n_test]
+
+    X_train = X[idx[:n_train], :]
+    y_train = y[idx[:n_train]]
+    X_test = X[idx[n_train:], :]
+    y_test = y[idx[n_train:]]
+
+    return X_train, y_train, X_test, y_test
 
 
 def get_data(data_config, rng):
@@ -365,6 +426,16 @@ def get_data(data_config, rng):
         gen_risk_linear = None
         X_test = y_test = None
 
+    elif data_config["src"] == "rcv1":
+        n_train, n_test = extract_dict_keys(data_config, ["n_train", "n_test"])
+        X_train, y_train, X_test, y_test = load_rcv1(n_train, n_test, rng)
+        gen_risk_linear = None
+
+    elif data_config["src"] == "fashion_mnist":
+        n_train, n_test = extract_dict_keys(data_config, ["n_train", "n_test"])
+        X_train, y_train, X_test, y_test = load_fashoin_mnist(n_train, n_test, rng)
+        gen_risk_linear = None
+
     else:
         raise ValueError(f"Unknown data source {data_config['src']}")
 
@@ -384,13 +455,12 @@ def get_data(data_config, rng):
     return X_train, y_train, gen_risk, test_risk
 
 
-def model_lookup(config):
+def model_lookup(config, p):
 
     method = config["method"]
     method_kwargs = config["method_kwargs"].copy()
 
     if method == "lasso":
-        p = config["data"]["p"]
         lamda = method_kwargs.pop("lamda0") / np.sqrt(p)
         direct = method_kwargs.pop("direct", None)
         return LassoModel(lamda, sklearn_lasso_kwargs=method_kwargs, direct=direct)
@@ -404,7 +474,6 @@ def model_lookup(config):
         return AdelieLassoModel(lamda)
 
     if method == "logistic":
-        p = config["data"]["p"]
         if method_kwargs["penalty"] == "l1":
             lamda = method_kwargs.pop("lamda0") / np.sqrt(p)
         elif method_kwargs["penalty"] == "l2":
@@ -413,6 +482,10 @@ def model_lookup(config):
         return LogisticModel(
             lamda, sklearn_logistic_kwargs=method_kwargs, direct=direct
         )
+
+    if method == "kernel-logistic":
+        lamda = method_kwargs.pop("lamda")
+        return KernelLogisticModel(lamda, method_kwargs)
 
     if method == "random-forest":
         return RandomForestRegressorModel(sklearn_rf_kwargs=method_kwargs)
@@ -485,7 +558,7 @@ if __name__ == "__main__":
     n, p = X_train.shape
 
     # Fit and evaluate the model on the whole data
-    model = model_lookup(config)
+    model = model_lookup(config, p)
     risk_fun = risk_lookup(config["risk"])
 
     log("Fitting model...")
