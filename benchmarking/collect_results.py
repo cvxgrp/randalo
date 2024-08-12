@@ -1351,6 +1351,10 @@ def truncated_normal_viz():
     )
 
 
+def fashion_mnist(results):
+    pass
+
+
 collect_mapping = {
     "categorical_comp": categorical_comp,
     "lasso_bks_convergence": lasso_bks_convergence,
@@ -1364,6 +1368,7 @@ collect_mapping = {
     "comp_all": comp_all,
     "truncated_normal_viz": truncated_normal_viz,
     "first_diff_scaling_1": first_diff_scaling_1,
+    "fashion_mnist": fashion_mnist,
 }
 
 
