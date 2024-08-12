@@ -1,0 +1,23 @@
+{
+    "id": "test",
+    "seed": 0,
+    "device": "cpu",
+    "data": {
+        "src": "fashion_mnist",
+        "n_train": 5000,
+        "n_test": 4000
+    },
+    "method": "kernel-logistic",
+    "method_kwargs": {
+        "lamda": 1e-6,
+        "kernel_fun": "rbf",
+        "kernel_fun_kwargs": {
+            "gamma": 1e-6
+        },
+        "solver": "cg"
+    },
+    "risk": "zero_one",
+    "cv_k": [2, 5, 10],
+    "alo_exact": false,
+    "alo_m": [10, 30, 50, 100, 300]
+}
