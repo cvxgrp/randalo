@@ -9,10 +9,10 @@
     },
     "method": "kernel-logistic",
     "method_kwargs": {
-        "lamda": 1e-6,
+        "lamda": 1e-3,
         "kernel_fun": "rbf",
         "kernel_fun_kwargs": {
-            "gamma": 1e-6
+            "gamma": 1e-7
         },
         "solver": "cg"
     },
