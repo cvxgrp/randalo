@@ -5,7 +5,7 @@
     "data": {
         "src": "fashion_mnist",
         "n_train": 5000,
-        "n_test": 4000
+        "n_test": 9000
     },
     "method": "kernel-logistic",
     "method_kwargs": {
@@ -19,5 +19,5 @@
     "risk": "zero_one",
     "cv_k": [2, 5, 10],
     "alo_exact": false,
-    "alo_m": [10, 30, 50, 100, 300]
+    "alo_m": [50, 100, 300]
 }
