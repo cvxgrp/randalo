@@ -226,7 +226,7 @@ def load_rcv1(n_train=20000, n_test=50000, rng=None):
     return X_train, y_train, X_test, y_test
 
 
-def load_fashoin_mnist(n_train=12000, n_test=2000, rng=None):
+def load_fashion_mnist(n_train=12000, n_test=2000, rng=None):
 
     X, y = fetch_openml("Fashion-MNIST", version=1, return_X_y=True, as_frame=False)
     X = X.astype(float)
@@ -433,7 +433,7 @@ def get_data(data_config, rng):
 
     elif data_config["src"] == "fashion_mnist":
         n_train, n_test = extract_dict_keys(data_config, ["n_train", "n_test"])
-        X_train, y_train, X_test, y_test = load_fashoin_mnist(n_train, n_test, rng)
+        X_train, y_train, X_test, y_test = load_fashion_mnist(n_train, n_test, rng)
         gen_risk_linear = None
 
     else:
