@@ -4,8 +4,8 @@
     "device": "cpu",
     "data": {
         "src": "fashion_mnist",
-        "n_train": 5000,
-        "n_test": 9000
+        "n_train": 3000,
+        "n_test": 20000
     },
     "method": "kernel-logistic",
     "method_kwargs": {

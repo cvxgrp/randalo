@@ -680,7 +680,7 @@ class KernelRidgeJacobian(LinearOperator):
         self.solver = solver
 
         self.H = self.K + lamda * torch.diag(1 / self.loss_hessian_diag)
-        if solver == "cho":
+        if self.solver == "cho":
             self.LD, self.pivots = torch.linalg.ldl_factor(self.H)
 
     def _matmul_impl(self, A):
@@ -695,6 +695,8 @@ class KernelRidgeJacobian(LinearOperator):
             with torch.no_grad():
                 M = lo.DiagonalOperator(1 / torch.diag(self.H))
                 Z = minres(self.H, A, M=M, tol=1e-12)
+        elif self.solver == "cho":
+            Z = torch.linalg.ldl_solve(self.LD, self.pivots, A)
         else:
             raise ValueError(f"Unknown solver {self.solver}")
 
@@ -723,6 +725,7 @@ class KernelLogisticModel(ALOModel):
     def __init__(self, lamda, kernel_logistic_kwargs):
         super().__init__()
         self.lamda = lamda
+        self.jac_solver = kernel_logistic_kwargs.pop("jac_solver", "cho")
         self.kernel_logistic_kwargs = kernel_logistic_kwargs
 
     def fit(self, X, y):
@@ -734,7 +737,11 @@ class KernelLogisticModel(ALOModel):
 
     def _compute_jac(self, device=None):
         return KernelRidgeJacobian(
-            self._K.to(device), self._d2loss_dy_hat2, self._d2loss_dboth, self.lamda
+            self._K.to(device),
+            self._d2loss_dy_hat2,
+            self._d2loss_dboth,
+            self.lamda,
+            solver=self.jac_solver,
         )
 
     @staticmethod
