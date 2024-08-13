@@ -230,9 +230,12 @@ def load_fashion_mnist(n_train=12000, n_test=2000, rng=None):
 
     X, y = fetch_openml("Fashion-MNIST", version=1, return_X_y=True, as_frame=False)
     X = X.astype(float)
-    task_idx = np.where(np.logical_or(y == "2", y == "4"))
-    X = X[task_idx]
-    y = (y[task_idx] == "2").astype(float) * 2 - 1
+    pos_classes = ["0", "2", "7"]
+    neg_classes = ["4", "6", "9"]
+    pos_mask = np.isin(y, pos_classes)
+    neg_mask = np.isin(y, neg_classes)
+    X = np.vstack([X[pos_mask], X[neg_mask]])
+    y = np.hstack([np.ones(np.sum(pos_mask)), -np.ones(np.sum(neg_mask))])
 
     if rng is None:
         rng = np.random.default_rng()

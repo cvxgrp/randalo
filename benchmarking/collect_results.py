@@ -1351,8 +1351,76 @@ def truncated_normal_viz():
     )
 
 
+def array_argmin(a, axis=None):
+    return np.unravel_index(np.argmin(a, axis=axis), a.shape)
+
+
 def fashion_mnist(results):
-    pass
+
+    axes_keys = [
+        ["config", "seed"],
+        ["config", "method_kwargs", "lamda"],
+        ["config", "method_kwargs", "kernel_fun_kwargs", "gamma"],
+    ]
+
+    results = extract_all_results(results, axes_keys)
+    seeds, lamdas, gammas = results.axes
+    ks = results.cv_k
+    ms = results.alo_m
+
+    print(lamdas)
+    print(gammas)
+    print(results.test_risks[0, ...])
+
+    cv_lamdas = np.zeros((len(seeds), len(ks)))
+    cv_gammas = np.zeros((len(seeds), len(ks)))
+    cv_test_risks = np.zeros((len(seeds), len(ks)))
+
+    alo_bks_lamdas = np.zeros((len(seeds), len(ms)))
+    alo_bks_gammas = np.zeros((len(seeds), len(ms)))
+    alo_bks_test_risks = np.zeros((len(seeds), len(ms)))
+
+    alo_poly_lamdas = np.zeros((len(seeds), len(ms)))
+    alo_poly_gammas = np.zeros((len(seeds), len(ms)))
+    alo_poly_test_risks = np.zeros((len(seeds), len(ms)))
+
+    for i in seeds:
+
+        for j, k in enumerate(ks):
+            idx = array_argmin(results.cv_risks[i, ..., j])
+            cv_lamdas[i, j] = lamdas[idx[0]]
+            cv_gammas[i, j] = gammas[idx[1]]
+            cv_test_risks[i, j] = results.test_risks[i, idx[0], idx[1]]
+
+        for j, m in enumerate(ms):
+            idx = array_argmin(results.alo_bks_risks[i, ..., j])
+            alo_bks_lamdas[i, j] = lamdas[idx[0]]
+            alo_bks_gammas[i, j] = gammas[idx[1]]
+            alo_bks_test_risks[i, j] = results.test_risks[i, idx[0], idx[1]]
+
+            idx = array_argmin(results.alo_poly_risks[i, ..., j])
+            alo_poly_lamdas[i, j] = lamdas[idx[0]]
+            alo_poly_gammas[i, j] = gammas[idx[1]]
+            alo_poly_test_risks[i, j] = results.test_risks[i, idx[0], idx[1]]
+
+    best_test_risks = np.min(results.test_risks, axis=(1, 2))
+    print(
+        f"Best test risk: {np.mean(best_test_risks):.4f} +- {np.std(best_test_risks):.4f})"
+    )
+    for i, k in enumerate(ks):
+        cv_times = np.sum(results.cv_times[..., i], axis=(1, 2))
+        print(
+            f"CV(K={k}): {np.mean(cv_test_risks[:, i]):.4f} +- {np.std(cv_test_risks[:, i]):.4f} in {np.mean(cv_times):.2f} +- {np.std(cv_times):.2f} seconds"
+        )
+    for i, m in enumerate(ms):
+        alo_bks_times = np.sum(results.alo_bks_times[..., i], axis=(1, 2))
+        print(
+            f"BKS-ALO(m={m}): {np.mean(alo_bks_test_risks[:, i]):.4f} +- {np.std(alo_bks_test_risks[:, i]):.4f} in {np.mean(alo_bks_times):.2f} +- {np.std(alo_bks_times):.2f} seconds"
+        )
+        alo_poly_times = np.sum(results.alo_poly_times[..., i], axis=(1, 2))
+        print(
+            f"RandALO(m={m}): {np.mean(alo_poly_test_risks[:, i]):.4f} +- {np.std(alo_poly_test_risks[:, i]):.4f} in {np.mean(alo_poly_times):.2f} +- {np.std(alo_poly_times):.2f} seconds"
+        )
 
 
 collect_mapping = {
