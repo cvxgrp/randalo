@@ -226,14 +226,12 @@ def load_rcv1(n_train=20000, n_test=50000, rng=None):
     return X_train, y_train, X_test, y_test
 
 
-def load_fashion_mnist(n_train=12000, n_test=2000, rng=None):
+def load_fashion_mnist(n_train=5000, n_test=10000, rng=None):
 
     X, y = fetch_openml("Fashion-MNIST", version=1, return_X_y=True, as_frame=False)
     X = X.astype(float)
-    # pos_classes = ["0", "2", "7"]
-    # neg_classes = ["4", "6", "9"]
-    pos_classes = ["0", "1", "2", "3", "4"]
-    neg_classes = ["5", "6", "7", "8", "9"]
+    pos_classes = ["0", "2", "7"]  # casual = t-shirt, pullover, sneaker
+    neg_classes = ["4", "6", "9"]  # formal = coat, shirt, ankle boot
     pos_mask = np.isin(y, pos_classes)
     neg_mask = np.isin(y, neg_classes)
     X = np.vstack([X[pos_mask], X[neg_mask]])

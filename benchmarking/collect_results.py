@@ -1368,6 +1368,10 @@ def fashion_mnist(results):
     ks = results.cv_k
     ms = results.alo_m
 
+    results.cv_risks[np.isnan(results.cv_risks)] = np.inf
+    results.alo_bks_risks[np.isnan(results.alo_bks_risks)] = np.inf
+    results.alo_poly_risks[np.isnan(results.alo_poly_risks)] = np.inf
+
     print(lamdas)
     print(gammas)
     print(results.test_risks[0, ...])
