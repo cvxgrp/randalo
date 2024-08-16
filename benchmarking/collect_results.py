@@ -747,6 +747,11 @@ def lasso_sweep(results):
     plt.savefig(os.path.join("figures", "lasso_sweep.pdf"), bbox_inches="tight")
 
 
+def confusion_matrix(results):
+
+    pass
+
+
 def lasso_cv_tradeoff(results):
 
     axes_keys = [
@@ -1449,6 +1454,7 @@ collect_mapping = {
     "lasso_cv_tradeoff": lasso_cv_tradeoff,
     "lasso_scaling_normal": lasso_scaling_normal,
     "lasso_sweep": lasso_sweep,
+    "confusion_matrix": confusion_matrix,
     "adelie_lasso_sweep": lasso_sweep,
     "logistic_comp": logistic_comp,
     "multivariate_t_comp": multivariate_t_comp,
