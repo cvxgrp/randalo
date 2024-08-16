@@ -12,7 +12,7 @@ for lamda0 in [10, 15]:
 
     config["method_kwargs"]["lamda0"] = lamda0
 
-    for seed in range(1):
+    for seed in range(100):
         config["seed"] = seed
 
         id = hashlib.sha256(json.dumps(config).encode()).hexdigest()[:8]

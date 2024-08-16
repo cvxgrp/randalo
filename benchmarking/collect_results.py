@@ -7,6 +7,7 @@ import sys
 import numpy as np
 from scipy import stats
 from matplotlib import pyplot as plt, gridspec
+import cmasher as cmr
 
 
 def setup_matplotlib():
@@ -703,7 +704,7 @@ def lasso_sweep(results):
     axes[0].set_xscale("log")
     # axes[0].set_title("Risk")
     axes[0].set_ylabel("Squared error")
-    axes[0].set_xlabel("Regularization parameter $\\lambda$")
+    axes[0].set_xlabel("Regularization parameter $\\lambda_0$")
     axes[0].legend()
 
     data = [
@@ -739,7 +740,7 @@ def lasso_sweep(results):
     # axes[1].set_yscale("log")
     # axes[1].set_title("Time")
     axes[1].set_ylabel("Time relative to model training")
-    axes[1].set_xlabel("Regularization parameter $\\lambda$")
+    axes[1].set_xlabel("Regularization parameter $\\lambda_0$")
     # axes[1].legend()
 
     plt.tight_layout()
@@ -1368,63 +1369,78 @@ def fashion_mnist(results):
     ks = results.cv_k
     ms = results.alo_m
 
-    results.cv_risks[np.isnan(results.cv_risks)] = np.inf
-    results.alo_bks_risks[np.isnan(results.alo_bks_risks)] = np.inf
-    results.alo_poly_risks[np.isnan(results.alo_poly_risks)] = np.inf
+    seed = 0
+    ik = 1
+    im = 0
 
-    print(lamdas)
-    print(gammas)
-    print(results.test_risks[0, ...])
-
-    cv_lamdas = np.zeros((len(seeds), len(ks)))
-    cv_gammas = np.zeros((len(seeds), len(ks)))
-    cv_test_risks = np.zeros((len(seeds), len(ks)))
-
-    alo_bks_lamdas = np.zeros((len(seeds), len(ms)))
-    alo_bks_gammas = np.zeros((len(seeds), len(ms)))
-    alo_bks_test_risks = np.zeros((len(seeds), len(ms)))
-
-    alo_poly_lamdas = np.zeros((len(seeds), len(ms)))
-    alo_poly_gammas = np.zeros((len(seeds), len(ms)))
-    alo_poly_test_risks = np.zeros((len(seeds), len(ms)))
-
-    for i in seeds:
-
-        for j, k in enumerate(ks):
-            idx = array_argmin(results.cv_risks[i, ..., j])
-            cv_lamdas[i, j] = lamdas[idx[0]]
-            cv_gammas[i, j] = gammas[idx[1]]
-            cv_test_risks[i, j] = results.test_risks[i, idx[0], idx[1]]
-
-        for j, m in enumerate(ms):
-            idx = array_argmin(results.alo_bks_risks[i, ..., j])
-            alo_bks_lamdas[i, j] = lamdas[idx[0]]
-            alo_bks_gammas[i, j] = gammas[idx[1]]
-            alo_bks_test_risks[i, j] = results.test_risks[i, idx[0], idx[1]]
-
-            idx = array_argmin(results.alo_poly_risks[i, ..., j])
-            alo_poly_lamdas[i, j] = lamdas[idx[0]]
-            alo_poly_gammas[i, j] = gammas[idx[1]]
-            alo_poly_test_risks[i, j] = results.test_risks[i, idx[0], idx[1]]
-
-    best_test_risks = np.min(results.test_risks, axis=(1, 2))
-    print(
-        f"Best test risk: {np.mean(best_test_risks):.4f} +- {np.std(best_test_risks):.4f})"
+    vmin = np.min(results.test_risks[seed, ...])
+    vmax = max(
+        [
+            np.max(x)
+            for x in [
+                results.test_risks[seed, ...],
+                results.cv_risks[seed, ..., ik],
+                results.alo_poly_risks[seed, ..., im],
+            ]
+        ]
     )
-    for i, k in enumerate(ks):
-        cv_times = np.sum(results.cv_times[..., i], axis=(1, 2))
-        print(
-            f"CV(K={k}): {np.mean(cv_test_risks[:, i]):.4f} +- {np.std(cv_test_risks[:, i]):.4f} in {np.mean(cv_times):.2f} +- {np.std(cv_times):.2f} seconds"
-        )
-    for i, m in enumerate(ms):
-        alo_bks_times = np.sum(results.alo_bks_times[..., i], axis=(1, 2))
-        print(
-            f"BKS-ALO(m={m}): {np.mean(alo_bks_test_risks[:, i]):.4f} +- {np.std(alo_bks_test_risks[:, i]):.4f} in {np.mean(alo_bks_times):.2f} +- {np.std(alo_bks_times):.2f} seconds"
-        )
-        alo_poly_times = np.sum(results.alo_poly_times[..., i], axis=(1, 2))
-        print(
-            f"RandALO(m={m}): {np.mean(alo_poly_test_risks[:, i]):.4f} +- {np.std(alo_poly_test_risks[:, i]):.4f} in {np.mean(alo_poly_times):.2f} +- {np.std(alo_poly_times):.2f} seconds"
-        )
+    cmap = cmr.get_sub_cmap(cmr.rainforest, 0.15, 1.0)
+
+    train_seconds = np.sum(results.full_train_times[seed, ...])
+    print(f"Training time: {train_seconds / 60:.1f} min")
+    cv_seconds = np.sum(results.cv_times[seed, ..., ik])
+    alo_poly_seconds = np.sum(results.alo_poly_times[seed, ..., im])
+
+    fig, axes = plt.subplots(1, 3, figsize=(6.5, 2.5), dpi=150)
+    axes[0].imshow(
+        results.test_risks[seed, ...], aspect="auto", vmin=vmin, vmax=vmax, cmap=cmap
+    )
+    axes[0].set_xticks(range(0, len(gammas), 2))
+    axes[0].set_xticklabels([f"$10^{{{np.log10(g):.1g}}}$" for g in gammas[0::2]])
+    axes[0].set_ylabel("Regularization parameter $\\lambda$")
+    axes[0].set_yticks(range(0, len(lamdas), 2))
+    axes[0].set_yticklabels([f"$10^{{{np.log10(l):.1g}}}$" for l in lamdas[0::2]])
+    axes[0].set_title("Test error")
+
+    idx = array_argmin(results.test_risks[seed, ...])
+    axes[0].scatter(idx[1], idx[0], color="red", marker="*")
+    print(f"Test risk: {np.min(results.test_risks[seed, ...])}")
+
+    axes[1].imshow(
+        results.cv_risks[seed, ..., ik], aspect="auto", vmin=vmin, vmax=vmax, cmap=cmap
+    )
+    axes[1].set_xlabel("Kernel parameter $\\gamma$")
+    axes[1].set_xticks(range(0, len(gammas), 2))
+    axes[1].set_xticklabels([f"$10^{{{np.log10(g):.1g}}}$" for g in gammas[0::2]])
+    axes[1].set_yticks([])
+    axes[1].set_title(f"CV($K={ks[ik]}$), {cv_seconds / 60:.1f} min")
+
+    idx = array_argmin(results.cv_risks[seed, ..., ik])
+    axes[1].scatter(idx[1], idx[0], color="red", marker="*")
+    print(f"CV risk: {np.min(results.cv_risks[seed, ..., ik])}")
+
+    axes[2].imshow(
+        results.alo_poly_risks[seed, ..., im],
+        aspect="auto",
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+    )
+    axes[2].set_xticks(range(0, len(gammas), 2))
+    axes[2].set_xticklabels([f"$10^{{{np.log10(g):.1g}}}$" for g in gammas[0::2]])
+    axes[2].set_yticks([])
+    axes[2].set_title(f"RandALO($m={ms[im]}$), {alo_poly_seconds / 60:.1f} min")
+
+    idx = array_argmin(results.alo_poly_risks[seed, ..., im])
+    axes[2].scatter(idx[1], idx[0], color="red", marker="*")
+    print(f"RandALO risk: {np.min(results.alo_poly_risks[seed, ..., im])}")
+
+    plt.tight_layout()
+    fig.subplots_adjust(right=0.875)
+    cbar_ax = fig.add_axes([0.9, 0.15, 0.025, 0.7])
+    fig.colorbar(axes[0].images[0], cax=cbar_ax)
+
+    plt.savefig(os.path.join("figures", "fashion_mnist.pdf"), bbox_inches="tight")
 
 
 collect_mapping = {
