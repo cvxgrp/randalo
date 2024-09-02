@@ -1,18 +1,28 @@
-import randalo.modeling_layer as ml
+from .modeling_layer import (
+    Regularizer,
+    SquareRegularizer,
+    L1Regularizer,
+    L2Regularizer,
+    HuberRegularizer,
+    Sum,
+    Loss,
+    LogisticLoss,
+    MSELoss,
+)
 from typing import Callable
 
 
 def regularizer_sum_to_cvxpy(obj, variable):
     match obj:
-        case ml.Sum(terms):
+        case Sum(terms):
             return cp.sum([regularizer_sum_to_cvxpy(term, variable) for term in terms])
-        case ml.SquareRegularizer(linear, scale, parameter):
+        case SquareRegularizer(linear, scale, parameter):
             func = cp.sum_squares
-        case ml.L1Regularizer(linear, scale, parameter):
+        case L1Regularizer(linear, scale, parameter):
             func = cp.norm1
-        case ml.L2Regularizer(linear, scale, parameter):
+        case L2Regularizer(linear, scale, parameter):
             func = cp.norm2
-        case ml.HuberRegularizer(linear, scale, parameter):
+        case HuberRegularizer(linear, scale, parameter):
             func = cp.huber
         case _:
             raise RuntimeError("Unknown loss")
@@ -25,24 +35,25 @@ def regularizer_sum_to_cvxpy(obj, variable):
 
 def loss_to_cvxpy(obj, variable):
     match obj:
-        case LosgisticLoss(y, X):
+        case LogisticLoss(y, X):
             return cp.logistic(-y * X @ variable)
         case MSELoss(y, X):
-            return cp.sum_squares(y - X @ variable) / np.prod(y.shape)
+            return cp.sum_squares(y - X @ variable) / y.numel()
         case _:
             raise RuntimeError("Unknown loss")
 
 
 def transform_model_to_cvxpy(loss, regularizer, variable):
-    return cp.Problem(loss_to_cvxpy(loss, variable)
-                      + regularizer_sum_to_cvxpy(regularizer, variable))
-    
+    return cp.Problem(
+        loss_to_cvxpy(loss, variable) + regularizer_sum_to_cvxpy(regularizer, variable)
+    )
+
 
 @dataclass
 class Jacobian:
     solution_func: Callable[[], torch.Tensor]
-    loss: ml.Loss
-    regularizer: ml.Sum | ml.Regularizer
+    loss: Loss
+    regularizer: Sum | Regularizer
 
     def __matmul__(self, rhs):
         beta_hat = solution_func
