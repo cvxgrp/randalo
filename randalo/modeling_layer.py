@@ -4,9 +4,10 @@ import cvxpy as cp
 import torch
 import numpy as np
 
-class HyperParamater:
+
+class HyperParameter:
     parameter = field(default_facultory=cp.Paramater)
-    
+
 
 @dataclass
 class Regularizer:
@@ -29,11 +30,11 @@ class Regularizer:
 
     def __add__(self, rhs):
         if isinstance(rhs, Sum):
-            return Sum(rhs.exprs + [self])
+            return Sum([self] + rhs.exprs)
         elif isinstance(rhs, Regularizer):
             return Sum([self, rhs])
         else:
-            raise TypeError("Add must be a Regularizer or Sum")
+            raise TypeError("Addend must be a Regularizer or Sum")
 
     def __radd__(self, lhs):
         return self + lhs

@@ -3,7 +3,7 @@ from .metrics import squared_error
 import numpy as np
 import torch
 
-from torch_linops import LinearOperator
+from linops import LinearOperator
 
 
 class RandALO(object):

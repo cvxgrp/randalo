@@ -1,0 +1,9 @@
+numpy
+scipy
+torch
+scikit-learn
+matplotlib
+pandas
+cvxpy
+git+ssh://git@github.com/cvxgrp/torch_linops.git
+-e .
