@@ -10,7 +10,7 @@ lamda = ra.HyperParameter()
 gamma = ra.HyperParameter()
 
 loss = ra.LogisticLoss(y, X, beta)
-regularizer = alpha * ra.SumSquares() + beta * ra.L1Loss(np.diff(np.eye(X.shape[1])))
+regularizer = alpha * ra.SquareRegularizer() + beta * ra.L1Regularizer(np.diff(np.eye(X.shape[1])))
 
 prob, loss, J = ra.gen_cvxpy_loss_and_jacobian(loss, regularizer)
 alpha.value = 10

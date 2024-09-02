@@ -64,7 +64,6 @@ class Sum:
 class Loss:
     y: torch.Tensor
     X: torch.Tensor
-    beta: torch.Tensor
 
 
 class LogisticLoss(Loss):
