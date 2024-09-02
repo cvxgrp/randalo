@@ -17,5 +17,5 @@ alpha.value = 10
 beta.value = 1
 prob.solve()
 
-alo = ra.RandALO(y_hat=X @ beta.value, y=y, loss, J)
+alo = ra.RandALO(y_hat=X @ beta.value, y=y, loss=loss, J=J)
 alo.compute()
