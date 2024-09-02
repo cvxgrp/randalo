@@ -1,28 +1,22 @@
-from .modeling_layer import (
-    Regularizer,
-    SquareRegularizer,
-    L1Regularizer,
-    L2Regularizer,
-    HuberRegularizer,
-    Sum,
-    Loss,
-    LogisticLoss,
-    MSELoss,
-)
 from typing import Callable
+
+import cvxpy as cp
+import torch
+
+from . import modeling_layer as ml
 
 
 def regularizer_sum_to_cvxpy(obj, variable):
     match obj:
-        case Sum(terms):
+        case ml.Sum(terms):
             return cp.sum([regularizer_sum_to_cvxpy(term, variable) for term in terms])
-        case SquareRegularizer(linear, scale, parameter):
+        case ml.SquareRegularizer(linear, scale, parameter):
             func = cp.sum_squares
-        case L1Regularizer(linear, scale, parameter):
+        case ml.L1Regularizer(linear, scale, parameter):
             func = cp.norm1
-        case L2Regularizer(linear, scale, parameter):
+        case ml.L2Regularizer(linear, scale, parameter):
             func = cp.norm2
-        case HuberRegularizer(linear, scale, parameter):
+        case ml.HuberRegularizer(linear, scale, parameter):
             func = cp.huber
         case _:
             raise RuntimeError("Unknown loss")
@@ -35,9 +29,9 @@ def regularizer_sum_to_cvxpy(obj, variable):
 
 def loss_to_cvxpy(obj, variable):
     match obj:
-        case LogisticLoss(y, X):
+        case ml.LogisticLoss(y, X):
             return cp.logistic(-y * X @ variable)
-        case MSELoss(y, X):
+        case ml.MSELoss(y, X):
             return cp.sum_squares(y - X @ variable) / y.numel()
         case _:
             raise RuntimeError("Unknown loss")
@@ -52,8 +46,8 @@ def transform_model_to_cvxpy(loss, regularizer, variable):
 @dataclass
 class Jacobian:
     solution_func: Callable[[], torch.Tensor]
-    loss: Loss
-    regularizer: Sum | Regularizer
+    loss: ml.Loss
+    regularizer: ml.Sum | ml.Regularizer
 
     def __matmul__(self, rhs):
         beta_hat = solution_func
