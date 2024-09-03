@@ -1,3 +1,4 @@
+import functools
 from typing import Callable
 
 import cvxpy as cp
@@ -53,6 +54,12 @@ class Jacobian:
         beta_hat = solution_func
         y = loss.y
         X = loss.X
+
+    _diag: torch.Tensor = None
+
+    @functools.cached_property
+    def diag(self):
+        return torch.diag(self @ torch.eye(self.shape[1]))
 
 
 def transform_model_to_Jacobian(solution_func, loss, regularizer):

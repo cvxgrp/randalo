@@ -6,7 +6,7 @@ import numpy as np
 
 
 class HyperParameter:
-    parameter = field(default_facultory=cp.Paramater)
+    parameter = field(default_factory=cp.Parameter)
 
 
 @dataclass
@@ -61,10 +61,12 @@ class Sum:
     exprs: list[Regularizer]
 
 
-@dataclass
+# @dataclass
 class Loss:
-    y: torch.Tensor
-    X: torch.Tensor
+    # we don't need to store data with the loss
+    # y: torch.Tensor
+    # X: torch.Tensor
+    pass
 
 
 class LogisticLoss(Loss):
@@ -72,4 +74,6 @@ class LogisticLoss(Loss):
 
 
 class MSELoss(Loss):
-    pass
+
+    def __call__(self, y, z):
+        return (y - z) ** 2 / 2

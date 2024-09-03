@@ -7,14 +7,30 @@ from torch import autograd
 
 
 def to_tensor(
-    array: np.ndarray | torch.Tensor,
+    array: np.ndarray | torch.Tensor | list[float],
     dtype: torch.dtype = torch.float32,
     device: torch.device = None,
 ) -> torch.Tensor:
+    """Convert a numpy array or torch tensor to a torch tensor.
+
+    Parameters
+    ----------
+    array : np.ndarray | torch.Tensor | list[float]
+        Input array or tensor.
+    dtype : torch.dtype, optional
+        Data type for the output tensor, by default torch.float32.
+    device : torch.device, optional
+        Device for the output tensor, by default None.
+
+    Returns
+    -------
+    torch.Tensor
+        Output tensor.
+    """
 
     if isinstance(array, np.ndarray):
         return torch.tensor(array, dtype=dtype, device=device)
-    elif isinstance(array, torch.Tensor):
+    elif isinstance(array, torch.Tensor) or isinstance(array, list):
         return torch.as_tensor(array, dtype=dtype, device=device)
     else:
         raise ValueError("Input must be a numpy array or torch tensor")
@@ -33,10 +49,8 @@ def compute_derivatives(
         Loss function to compute derivatives of. The function should take the
         true labels `y` and the predicted values `y_hat` as input and return
         the element-wise loss.
-
     y : torch.Tensor
         True labels.
-
     y_hat : torch.Tensor
         Predicted values.
 
@@ -79,3 +93,81 @@ def compute_derivatives(
         d2loss_dboth.detach(),
         d2loss_dy_hat2.detach(),
     )
+
+
+def unsqueeze_scalar_like(x: float, array: torch.Tensor) -> torch.Tensor:
+    """Expand a scalar to the number of dimensions of an array.
+
+    Parameters
+    ----------
+    x : float
+        Scalar value.
+    array : torch.Tensor
+        Array to expand the scalar to.
+
+    Returns
+    -------
+    torch.Tensor
+        Expanded scalar.
+    """
+
+    return torch.tensor(x, dtype=array.dtype, device=array.device).reshape(
+        *(1,) * array.ndim
+    )
+
+
+def create_mixing_matrix(m: int, subsets: list[list[int]]) -> torch.Tensor:
+    """Create a mixing matrix A for a given set of subsets, such that when
+    M @ A is computed, the columns of M corresponding to the subsets are
+    averaged.
+
+    Parameters
+    ----------
+    m : int
+        Number of rows of the mixing matrix.
+    subsets : list[list[int]]
+        List of subsets of [m] to average.
+
+    Returns
+    -------
+    torch.Tensor
+        Mixing matrix.
+    """
+
+    # create mixing matrix
+    A = torch.zeros(m, len(subsets))
+    for j, subset in enumerate(subsets):
+        A[subset, j] = 1 / len(subset)
+
+    return A
+
+
+def lstsq_y_intercept(
+    x: torch.Tensor | np.ndarray | list[float],
+    y: torch.Tensor | np.ndarray | list[float],
+) -> float:
+    """Find the y-intercept of the least squares line.
+
+    Parameters
+    ----------
+    x : torch.Tensor | np.ndarray | list[float]
+        Input data.
+    y : torch.Tensor | np.ndarray | list[float]
+        Output data.
+
+    Returns
+    -------
+    float
+        The y-intercept of the least squares line.
+    """
+    x = to_tensor(x).reshape(-1, 1)
+    y = to_tensor(y).reshape(-1)
+    n = x.shape[0]
+
+    # add intercept
+    x = torch.cat([x, torch.ones(n, 1, dtype=x.dtype, device=x.device)], dim=1)
+
+    # solve least squares
+    beta, *_ = torch.linalg.lstsq(x, y)
+
+    return beta[-1].item()
