@@ -7,6 +7,14 @@ import numpy as np
 
 class HyperParameter:
     parameter = field(default_factory=cp.Parameter)
+    scale: float = field(init=False, default=1.0)
+
+    def __mul__(self, r):
+        if isinstance(r, float | np.float32 | torch.float64 | torch.float32):
+            self.scale *= r
+        else:
+            raise TypeError("Multiply must be with either a scalar or HyperParameter")
+        return self
 
 
 @dataclass
@@ -17,8 +25,9 @@ class Regularizer:
 
     def __mul__(self, r):
         if isinstance(r, HyperParameter):
-            assert self.parameter is None
-            parameter = r
+            if self.parameter is not None:
+                raise TypeError("Cannot have multiple parameters") 
+            self.parameter = r
         elif isinstance(r, float | np.float32 | torch.float64 | torch.float32):
             self.scale *= r
         else:
@@ -60,6 +69,18 @@ class HuberRegularizer(Regularizer):
 class Sum:
     exprs: list[Regularizer]
 
+    def __mul__(self, r):
+        return Sum([r * expr for expr in self.exprs])
+
+    def __rmul__(self, r):
+        return self * r
+
+    def __add__(self, r):
+        if isinstance(r, Sum):
+            return Sum(r.exprs + self.exprs)
+        else:
+            return NotImplemented
+
 
 # @dataclass
 class Loss:
@@ -70,10 +91,19 @@ class Loss:
 
 
 class LogisticLoss(Loss):
-    pass
+
+    @staticmethod
+    def func(y, y_hat):
+        return torch.log(1 + torch.exp(-y * y_hat))
+
 
 
 class MSELoss(Loss):
-
     def __call__(self, y, z):
         return (y - z) ** 2 / 2
+
+    @staticmethod
+    def func(y, y_hat):
+        return (y - y_hat) ** 2 / 2 / np.prod(y.shape)
+
+
