@@ -1,7 +1,7 @@
 from typing import Callable
 
 import numpy as np
-
+import sklearn
 import torch
 from torch import autograd
 
@@ -142,11 +142,12 @@ def create_mixing_matrix(m: int, subsets: list[list[int]]) -> torch.Tensor:
     return A
 
 
-def lstsq_y_intercept(
+def robust_y_intercept(
     x: torch.Tensor | np.ndarray | list[float],
     y: torch.Tensor | np.ndarray | list[float],
+    epsilon: float = 1.35,
 ) -> float:
-    """Find the y-intercept of the least squares line.
+    """Find the y-intercept of the robust linear fit.
 
     Parameters
     ----------
@@ -154,20 +155,18 @@ def lstsq_y_intercept(
         Input data.
     y : torch.Tensor | np.ndarray | list[float]
         Output data.
+    epsilon : float, optional
+        Huber loss parameter, by default 1.35.
 
     Returns
     -------
     float
-        The y-intercept of the least squares line.
+        The y-intercept.
     """
-    x = to_tensor(x).reshape(-1, 1)
-    y = to_tensor(y).reshape(-1)
+    x = np.asarray(x).reshape(-1, 1)
+    y = np.asarray(y).reshape(-1)
     n = x.shape[0]
 
-    # add intercept
-    x = torch.cat([x, torch.ones(n, 1, dtype=x.dtype, device=x.device)], dim=1)
-
-    # solve least squares
-    beta, *_ = torch.linalg.lstsq(x, y)
-
-    return beta[-1].item()
+    huber = sklearn.linear_model.HuberRegressor(fit_intercept=True, epsilon=epsilon)
+    huber.fit(x, y)
+    return huber.intercept_

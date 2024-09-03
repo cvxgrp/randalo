@@ -59,14 +59,15 @@ class RandALO(object):
         y_hat = util.to_tensor(y_hat, dtype=dtype, device=device)
 
         self._dtype = dtype
-        self._device = device
+        self._device = y.device
         if rng is None:
             rng = torch.Generator(device=device)
+            rng.seed()
         self._rng = rng
 
         # check dtypes and devices
         # assert self._jac.dtype == self._dtype
-        assert self._jac.device == self._device
+        # assert self._jac.device == self._device
 
         # compute derivatives of loss function
         (
@@ -124,8 +125,8 @@ class RandALO(object):
         # compute BKS estimates for subsets of Jacobian–vector products
         if isinstance(subsets, int):
             subsets = [
-                np.random.choice(n_matvecs, m, replace=False)
-                for m in np.linspace(n_matvecs // 2, n_matvecs, subsets, dtype=int)
+                torch.randperm(n_matvecs, generator=self._rng)[:m]
+                for m in torch.linspace(n_matvecs // 2, n_matvecs, subsets, dtype=int)
             ]
         mixing_matrix = util.create_mixing_matrix(n_matvecs, subsets)
         mus = self._normalized_diag_jac_estims @ mixing_matrix
@@ -139,7 +140,7 @@ class RandALO(object):
             torch.sum(risk_fun(self._y, y_tilde)).item() / self._y.shape[0]
             for y_tilde in y_tildes
         ]
-        return util.lstsq_y_intercept(1 / m_primes, risks)
+        return util.robust_y_intercept(1 / m_primes, risks), m_primes, risks
 
     def evaluate_bks(
         self,
@@ -322,4 +323,14 @@ class RandALO(object):
 
         sklearn.utils.validation.check_is_fitted(model)
 
-        pass
+        match model:
+            case sklearn.linear_model.LinearRegression():
+                loss = ml.MSELoss()
+                y = y
+                y_hat = model.predict(X)
+            case _:
+                raise ValueError(f"Model {model.__class__.__name__} not supported.")
+
+        jac = ml.Jacobian()
+
+        return cls(loss=loss, jac=jac, y=y, y_hat=y_hat)
