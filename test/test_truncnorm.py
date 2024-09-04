@@ -43,7 +43,7 @@ class TruncnormData(object):
         )
 
 
-class TruncnormTestCase(unittest.TestCase):
+class TestTruncnorm(unittest.TestCase):
 
     def test_truncnorm_mean(self):
 

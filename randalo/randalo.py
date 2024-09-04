@@ -7,7 +7,7 @@ import torch
 
 from . import modeling_layer as ml
 from . import truncnorm
-from . import util
+from . import utils
 
 
 class RandALO(object):
@@ -52,11 +52,11 @@ class RandALO(object):
 
         if y is None:
             raise ValueError("label values must be provided")
-        y = util.to_tensor(y, dtype=dtype, device=device)
+        y = utils.to_tensor(y, dtype=dtype, device=device)
 
         if y_hat is None:
             raise ValueError("predicted values must be provided")
-        y_hat = util.to_tensor(y_hat, dtype=dtype, device=device)
+        y_hat = utils.to_tensor(y_hat, dtype=dtype, device=device)
 
         self._dtype = dtype
         self._device = y.device
@@ -76,7 +76,7 @@ class RandALO(object):
             self._dloss_dy_hat,
             self._d2loss_dboth,
             self._d2loss_dy_hat2,
-        ) = util.compute_derivatives(self._loss, y, y_hat)
+        ) = utils.compute_derivatives(self._loss, y, y_hat)
 
         # precompute some quantities for working with generic form
         # a = dloss_dy_hat
@@ -128,7 +128,7 @@ class RandALO(object):
                 torch.randperm(n_matvecs, generator=self._rng)[:m]
                 for m in torch.linspace(n_matvecs // 2, n_matvecs, subsets, dtype=int)
             ]
-        mixing_matrix = util.create_mixing_matrix(n_matvecs, subsets)
+        mixing_matrix = utils.create_mixing_matrix(n_matvecs, subsets)
         mus = self._normalized_diag_jac_estims @ mixing_matrix
         m_primes = torch.sum(mixing_matrix > 0, dim=0, keepdim=True)
         normalized_diag_jacs = self._uniform_map_estimates(mus, m_primes)
@@ -140,7 +140,7 @@ class RandALO(object):
             torch.sum(risk_fun(self._y, y_tilde)).item() / self._y.shape[0]
             for y_tilde in y_tildes
         ]
-        return util.robust_y_intercept(1 / m_primes, risks), m_primes, risks
+        return utils.robust_y_intercept(1 / m_primes, risks), m_primes, risks
 
     def evaluate_bks(
         self,
@@ -167,7 +167,7 @@ class RandALO(object):
 
         mus = self._normalized_diag_jac_estims[:, :n_matvecs].mean(dim=1)
         normalized_diag_jac_bks = self._uniform_map_estimates(
-            mus, util.unsqueeze_scalar_like(n_matvecs, mus)
+            mus, utils.unsqueeze_scalar_like(n_matvecs, mus)
         )
 
         y_tilde = self._y_tilde_from_normalized_jac(normalized_diag_jac_bks)
@@ -314,8 +314,8 @@ class RandALO(object):
             mus,
             self._normalized_diag_jac_stds.reshape(-1, *([1] * (mus.ndim - 1)))
             / torch.sqrt(ms),
-            util.unsqueeze_scalar_like(0.0, mus),
-            util.unsqueeze_scalar_like(1.0, mus),
+            utils.unsqueeze_scalar_like(0.0, mus),
+            utils.unsqueeze_scalar_like(1.0, mus),
         )
 
     @classmethod

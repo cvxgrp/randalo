@@ -1,7 +1,7 @@
 from typing import Callable
 
 import numpy as np
-import sklearn
+import sklearn.linear_model
 import torch
 from torch import autograd
 
