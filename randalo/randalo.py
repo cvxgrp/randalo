@@ -140,7 +140,8 @@ class RandALO(object):
             torch.sum(risk_fun(self._y, y_tilde)).item() / self._y.shape[0]
             for y_tilde in y_tildes
         ]
-        return utils.robust_y_intercept(1 / m_primes, risks), m_primes, risks
+        # return utils.robust_y_intercept(1 / m_primes, risks), m_primes, risks
+        return utils.robust_y_intercept(1 / m_primes, risks)
 
     def evaluate_bks(
         self,
@@ -154,7 +155,7 @@ class RandALO(object):
         risk_fun : Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
             The risk function to evaluate.
         n_matvecs : int, optional
-            The number of Jacobian--vector products to compute for the BKS
+            The number of Jacobian–vector products to compute for the BKS
             method, by default 100.
 
         Returns
@@ -239,7 +240,7 @@ class RandALO(object):
         return self._y_tilde_from_normalized_jac(-diag_jac * self._c_b)
 
     def _get_matvecs(self, n_matvecs: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Compute random Jacobian--vector products using random Rademacher
+        """Compute random Jacobian–vector products using random Rademacher
         vectors.
 
         Parameters
@@ -250,7 +251,7 @@ class RandALO(object):
         Returns
         -------
         [Tensor, Tensor]
-            The matrix-vector products and the random vectors.
+            The matrix–vector products and the random vectors.
         """
         Omega = (
             torch.randint(
@@ -277,7 +278,7 @@ class RandALO(object):
         if n_matvecs <= self._n_matvecs:
             return
 
-        # compute the matrix-vector products
+        # compute the matrix–vector products
         matvecs, Omega = self._get_matvecs(n_matvecs - self._n_matvecs)
 
         # update the diagonal Jacobian estimates
