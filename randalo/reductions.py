@@ -77,10 +77,70 @@ class Jacobian(lo.LinearOperator):
         X = utils.to_tensor(self.loss.X)
         y, y_hat, dloss_dy_hat, d2loss_dboth, d2loss_dy_hat2 = utils.compute_derivatives(self.loss.func, y, X @ beta_hat)
 
-        mask = torch.ones_like(y.squeeze(), dtype=bool)
+        mask = torch.ones_like(beta_hat.squeeze(), dtype=bool)
 
         constraints, hessians = unpack_regularizer(self.regularizer, mask, beta_hat)
-        
+        X_mask = X[:, mask]
+        rhs_scaled =  (d2loss_dy_hat2[:, None] * rhs)
+
+        if constraints is None and hessians is None:
+            tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
+            Q, R = torch.linalg.qr(tilde_X)
+            return Q @ (Q.T @ rhs_scaled)
+        elif constraints is None:
+            kkt_rhs = X_mask.T @ rhs_scaled
+            if hessians is None:
+                tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
+                _, R = torch.linalg.qr(tilde_X, mode='r')
+            else:
+                hessians_mask = hessians[mask, :][:, mask]
+                P = X_mask.T @ (d2loss_dy_hat2[:, None] X_mask) + hessians_mask
+                R = torch.linalg.cholesky(P, upper=True)
+            v = torch.linalg.solve_triangular(
+                R, torch.linalg.solve_triangular(
+                    R.T, kkt_rhs, upper=False
+                ), upper=True
+            )
+        else:
+            constraints_mask = constraints[:, mask]
+            n, m = constraints_mask.shape
+            if n >= m:
+                _, N = torch.linalg.qr(constraints_mask, mode='r')
+            else:
+                N = constraints_mask
+            
+            if hessians is None:
+                tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
+                _, P_R = torch.linalg.qr(tilde_X, mode='r')
+            else:
+                hessians_mask = hessians[mask, :][:, mask]
+                P = X_mask.T @ (d2loss_dy_hat2[:, None] X_mask) + hessians_mask
+                P_R = torch.linalg.cholesky(P, upper=True)
+ 
+            S = self.D_nmask @ torch.linalg.solve_triangular(
+                P_R, torch.linalg.solve_triangular(
+                    P_R.T, kkt_rhs, upper=False
+                ), upper=True
+            )
+            S_R = torch.linalg.cholesky(S, upper=True)
+            NPinvRhs = N @ torch.linalg.solve_triangular(
+                P_R, torch.linalg.solve_triangular(
+                    P_R.T, kkt_rhs, upper=False
+                ), upper=True
+            )
+            nu = torch.linalg.solve_triangular(
+                S_R, torch.linalg.solve_triangular(
+                    S_R.T, -NPinvRhs, upper=False
+                ), upper=True
+            )
+            v = torch.linalg.solve_triangular(
+                P_R, torch.linalg.solve_triangular(
+                    P_R.T, kkt_rhs + N.T @ nu, upper=False
+                ), upper=True
+            )
+            return X_mask @ v
+
+
 def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
     """
     Modifies mask in place
