@@ -2,7 +2,7 @@ from typing import Callable
 
 import linops as lo
 import numpy as np
-import sklearn
+import sklearn.utils.validation
 import torch
 
 from . import modeling_layer as ml
@@ -11,7 +11,6 @@ from . import utils
 
 
 class RandALO(object):
-
     def __init__(
         self,
         loss: ml.Loss = None,
@@ -321,7 +320,6 @@ class RandALO(object):
 
     @classmethod
     def from_sklearn(cls, model, X, y):
-
         sklearn.utils.validation.check_is_fitted(model)
 
         match model:

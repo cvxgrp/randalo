@@ -7,9 +7,7 @@ from randalo import utils
 
 
 class TestUtils(unittest.TestCase):
-
     def test_to_tensor(self):
-
         x = [1, 2, 3]
         x_np = np.array(x)
         self.assertIs(x_np.dtype, np.dtype("int64"))
@@ -33,9 +31,11 @@ class TestUtils(unittest.TestCase):
             utils.to_tensor(1)
 
     def test_compute_derivatives(self):
-
         n = 100
-        loss_fun = lambda y, z: (y - z) ** 4
+
+        def loss_fun(y, z):
+            return (y - z) ** 4
+
         rng = torch.Generator().manual_seed(0)
         y = torch.randn(n, generator=rng)
         z = torch.randn(n, generator=rng)
@@ -50,7 +50,6 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(torch.allclose(12 * (y - z) ** 2, d2loss_dz2))
 
     def test_unsqueeze_scalar_like(self):
-
         x = 1.5
         arr1 = torch.ones(10, dtype=torch.float32)
         arr2 = torch.ones(10, 10, dtype=torch.float64)
@@ -73,7 +72,6 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(x3.item(), np.floor(x))
 
     def test_create_mixing_matrix(self):
-
         m = 5
         subsets = [[0, 1, 2], [2, 3], [4]]
         M0 = torch.tensor(
@@ -83,7 +81,6 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(torch.allclose(M0, M))
 
     def test_robust_y_intercept(self):
-
         n = 100
         rng = torch.Generator().manual_seed(0)
         x = torch.randn(n // 2, generator=rng)

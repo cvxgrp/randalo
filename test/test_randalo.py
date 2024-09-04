@@ -8,9 +8,7 @@ from randalo import RandALO, modeling_layer as ml, truncnorm
 
 
 class TestRandALO(unittest.TestCase):
-
     def setUp(self):
-
         self.n = 10
         self.rng = torch.Generator().manual_seed(0)
         self.diag = torch.rand(self.n, generator=self.rng)
@@ -20,7 +18,6 @@ class TestRandALO(unittest.TestCase):
         self.y_hat = torch.rand(self.n, generator=self.rng)
 
     def test_diagonal_jac(self):
-
         ra = RandALO(
             loss=self.loss, jac=self.jac, y=self.y, y_hat=self.y_hat, rng=self.rng
         )
@@ -50,7 +47,6 @@ class TestRandALO(unittest.TestCase):
         )
 
     def test_psd_jac(self):
-
         X = torch.rand(self.n, self.n, generator=self.rng)
         J = X @ torch.linalg.solve(X.T @ X + torch.eye(self.n), X.T)
         diag = torch.diag(J)
@@ -69,7 +65,6 @@ class TestRandALO(unittest.TestCase):
         )
 
     def test_more_matvecs(self):
-
         ra = RandALO(
             loss=self.loss, jac=self.jac, y=self.y, y_hat=self.y_hat, rng=self.rng
         )
@@ -100,7 +95,6 @@ class TestRandALO(unittest.TestCase):
         self.assertTrue(np.isnan(risk3))
 
     def test_uniform_map_estimates(self):
-
         ra = RandALO(
             loss=self.loss, jac=self.jac, y=self.y, y_hat=self.y_hat, rng=self.rng
         )

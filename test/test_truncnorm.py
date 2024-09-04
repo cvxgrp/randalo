@@ -8,14 +8,11 @@ from randalo import truncnorm
 
 
 class TruncnormData(object):
-
     def __init__(self, mu, sigma, a=None, b=None, alpha=None, beta=None):
-
         self.mu = mu
         self.sigma = sigma
 
         match (a, b, alpha, beta):
-
             case (None, None, None, None):
                 self.a = -np.inf
                 self.b = np.inf
@@ -44,9 +41,7 @@ class TruncnormData(object):
 
 
 class TestTruncnorm(unittest.TestCase):
-
     def test_truncnorm_mean(self):
-
         rng = np.random.default_rng(0)
 
         # test basic truncnorm_mean

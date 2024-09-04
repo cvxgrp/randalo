@@ -68,7 +68,6 @@ def compute_derivatives(
     # detach and clone to avoid memory leaks
     y = y.detach().clone().requires_grad_(True)
     y_hat = y_hat.detach().clone().requires_grad_(True)
-    n = y.shape[0]
 
     # compute first and second derivatives of loss function
     # we obtain the vector derivatives by summing and then taking the gradient
@@ -165,7 +164,6 @@ def robust_y_intercept(
     """
     x = np.asarray(x).reshape(-1, 1)
     y = np.asarray(y).reshape(-1)
-    n = x.shape[0]
 
     huber = sklearn.linear_model.HuberRegressor(fit_intercept=True, epsilon=epsilon)
     huber.fit(x, y)
