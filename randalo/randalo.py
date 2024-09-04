@@ -129,7 +129,7 @@ class RandALO(object):
                 for m in torch.linspace(n_matvecs // 2, n_matvecs, subsets, dtype=int)
             ]
         mixing_matrix = utils.create_mixing_matrix(n_matvecs, subsets)
-        mus = self._normalized_diag_jac_estims @ mixing_matrix
+        mus = self._normalized_diag_jac_estims[:, :n_matvecs] @ mixing_matrix
         m_primes = torch.sum(mixing_matrix > 0, dim=0, keepdim=True)
         normalized_diag_jacs = self._uniform_map_estimates(mus, m_primes)
         y_tildes = [
@@ -303,7 +303,7 @@ class RandALO(object):
         ----------
         mus : torch.Tensor
             The sample means of the diagonal estimates.
-        m s: torch.Tensor
+        ms: torch.Tensor
             The number of samples, broadcastable with `mus`.
 
         Returns
