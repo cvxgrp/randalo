@@ -192,7 +192,7 @@ class RandALO(object):
         """
         if self._y_tilde_exact is None:
             if hasattr(self._jac, "diag"):
-                self._y_tilde_exact = self._y_tilde_from_jac(self._jac.diag)
+                self._y_tilde_exact = self._y_tilde_from_jac(self._jac.diag())
             else:
                 self._y_tilde_exact = self._y_tilde_from_normalized_jac(
                     torch.diag(self._normalized_jac @ torch.eye(self._y.shape[0]))
