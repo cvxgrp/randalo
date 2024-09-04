@@ -21,7 +21,9 @@ class TestRandALO(unittest.TestCase):
 
     def test_diagonal_jac(self):
 
-        ra = RandALO(loss=self.loss, jac=self.jac, y=self.y, y_hat=self.y_hat)
+        ra = RandALO(
+            loss=self.loss, jac=self.jac, y=self.y, y_hat=self.y_hat, rng=self.rng
+        )
         risk = ra.evaluate(self.loss, n_matvecs=3)
         self.assertEqual(ra._n_matvecs, 3)
         self.assertEqual(ra._normalized_diag_jac_estims.shape, (self.n, 3))
@@ -54,7 +56,7 @@ class TestRandALO(unittest.TestCase):
         diag = torch.diag(J)
         jac = lo.MatrixOperator(J)
 
-        ra = RandALO(loss=self.loss, jac=jac, y=self.y, y_hat=self.y_hat)
+        ra = RandALO(loss=self.loss, jac=jac, y=self.y, y_hat=self.y_hat, rng=self.rng)
         risk = ra.evaluate(self.loss, n_matvecs=200_000)
         self.assertFalse(torch.allclose(ra._normalized_diag_jac_estims, diag[:, None]))
 
@@ -68,7 +70,9 @@ class TestRandALO(unittest.TestCase):
 
     def test_more_matvecs(self):
 
-        ra = RandALO(loss=self.loss, jac=self.jac, y=self.y, y_hat=self.y_hat)
+        ra = RandALO(
+            loss=self.loss, jac=self.jac, y=self.y, y_hat=self.y_hat, rng=self.rng
+        )
         ra.evaluate(self.loss, n_matvecs=3)
         self.assertEqual(ra._n_matvecs, 3)
         self.assertEqual(ra._normalized_diag_jac_estims.shape, (self.n, 3))
@@ -97,7 +101,9 @@ class TestRandALO(unittest.TestCase):
 
     def test_uniform_map_estimates(self):
 
-        ra = RandALO(loss=self.loss, jac=self.jac, y=self.y, y_hat=self.y_hat)
+        ra = RandALO(
+            loss=self.loss, jac=self.jac, y=self.y, y_hat=self.y_hat, rng=self.rng
+        )
         ra.evaluate(self.loss, n_matvecs=3)
 
         mus = ra._normalized_diag_jac_estims.mean(dim=1, keepdim=True)
