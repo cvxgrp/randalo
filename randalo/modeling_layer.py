@@ -16,10 +16,19 @@ class HyperParameter:
             raise TypeError("Multiply must be with either a scalar or HyperParameter")
         return self
 
+    @property
+    def value(self):
+        return self.scale * self.parameter.value
+    
+    @value.setter
+    def value(self, val):
+        assert self.scale == 1.0, "Cannot set the value of a scaled parameter"
+        self.parameter.value = val
+
 
 @dataclass
 class Regularizer:
-    linear: np.ndarray = field(default=None)
+    linear: np.ndarray | list[int] = field(default=None)
     scale: float = field(init=False, default=1.0)
     parameter: HyperParameter = field(init=False, default=None)
 
