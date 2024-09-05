@@ -2,11 +2,13 @@ import functools
 from typing import Callable, Literal
 from dataclasses import dataclass, field
 
+import numpy as np
 import cvxpy as cp
 import linops as lo
 import torch
 
 from . import modeling_layer as ml
+from . import utils
 
 
 def regularizer_sum_to_cvxpy(obj, variable):
@@ -23,46 +25,48 @@ def regularizer_sum_to_cvxpy(obj, variable):
             func = cp.huber
         case _:
             raise RuntimeError("Unknown loss")
-
+    expr = func(obj.linear @ variable if obj.linear is not None else variable)
     if obj.parameter is None:
-        return obj.scale * func(obj.linear @ variable)
+        return obj.scale * expr
     else:
-        return obj.scale * obj.parameter.scale * obj.parameter.parameter * func(obj.linear @ variable)
+        return obj.scale * obj.parameter.scale * obj.parameter.parameter * expr
 
 
-def loss_to_cvxpy(obj, variable):
+def loss_to_cvxpy(obj, X, y, variable):
     match obj:
-        case ml.LogisticLoss(y, X):
+        case ml.LogisticLoss():
             return cp.sum(cp.logistic(-cp.multiply(y, X @ variable)))
-        case ml.MSELoss(y, X):
-            return cp.sum_squares(y - X @ variable) / y.numel()
+        case ml.MSELoss():
+            return cp.sum_squares(y - X @ variable) / np.prod(y.shape) / 2
         case _:
             raise RuntimeError("Unknown loss")
 
 
-def transform_model_to_cvxpy(loss, regularizer, variable):
-    return cp.Problem(
-        loss_to_cvxpy(loss, variable) + regularizer_sum_to_cvxpy(regularizer, variable)
-    )
+def transform_model_to_cvxpy(loss, regularizer, X, y, variable):
+    return cp.Problem(cp.Minimize(
+        loss_to_cvxpy(loss, X, y, variable) + regularizer_sum_to_cvxpy(regularizer, variable)
+    ))
 
 
 class Jacobian(lo.LinearOperator):
     solution_func: Callable[[], torch.Tensor]
     loss: ml.Loss
     regularizer: ml.Sum | ml.Regularizer
-    inverse_method: Literal[None, 'minres', 'cholesky'] = field(default=None)
+    inverse_method: Literal[None, 'minres', 'cholesky']
 
     supports_operator_matrix = True
 
-    def __init__(self, solution_func, loss, regularizer, inverse_method):
+    def __init__(self, y, X, solution_func, loss, regularizer, inverse_method=None):
         self.solution_func = solution_func
         self.loss = loss
         self.regularizer = regularizer
         self.inverse_method = inverse_method
-        
+        self.y = utils.to_tensor(y)
+        self.X = utils.to_tensor(X)
+
     @property
     def _shape(self):
-        n = self.loss.y.shape[0]
+        n = self.y.shape[0]
         return (n, n)
 
     _diag: torch.Tensor = None
@@ -72,16 +76,21 @@ class Jacobian(lo.LinearOperator):
         return torch.diag(self @ torch.eye(self.shape[1]))
 
     def _matmul_impl(self, rhs):
-        beta_hat = self.solution_func()
-        y = utils.to_tensor(self.loss.y)
-        X = utils.to_tensor(self.loss.X)
+        rhs = utils.to_tensor(rhs)
+        needs_squeeze = False
+        if len(rhs.shape) == 1:
+            rhs = rhs.unsqueeze(-1)
+            needs_squeeze = True
+        beta_hat = utils.to_tensor(self.solution_func())
+        y = self.y
+        X = self.X
         y, y_hat, dloss_dy_hat, d2loss_dboth, d2loss_dy_hat2 = utils.compute_derivatives(self.loss.func, y, X @ beta_hat)
 
         mask = torch.ones_like(beta_hat.squeeze(), dtype=bool)
 
         constraints, hessians = unpack_regularizer(self.regularizer, mask, beta_hat)
         X_mask = X[:, mask]
-        rhs_scaled =  (d2loss_dy_hat2[:, None] * rhs)
+        rhs_scaled = -d2loss_dboth[:, None] * rhs
 
         if constraints is None and hessians is None:
             tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
@@ -94,7 +103,7 @@ class Jacobian(lo.LinearOperator):
                 _, R = torch.linalg.qr(tilde_X, mode='r')
             else:
                 hessians_mask = hessians[mask, :][:, mask]
-                P = X_mask.T @ (d2loss_dy_hat2[:, None] X_mask) + hessians_mask
+                P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
                 R = torch.linalg.cholesky(P, upper=True)
             v = torch.linalg.solve_triangular(
                 R, torch.linalg.solve_triangular(
@@ -114,7 +123,7 @@ class Jacobian(lo.LinearOperator):
                 _, P_R = torch.linalg.qr(tilde_X, mode='r')
             else:
                 hessians_mask = hessians[mask, :][:, mask]
-                P = X_mask.T @ (d2loss_dy_hat2[:, None] X_mask) + hessians_mask
+                P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
                 P_R = torch.linalg.cholesky(P, upper=True)
  
             S = self.D_nmask @ torch.linalg.solve_triangular(
@@ -138,7 +147,8 @@ class Jacobian(lo.LinearOperator):
                     P_R.T, kkt_rhs + N.T @ nu, upper=False
                 ), upper=True
             )
-            return X_mask @ v
+        out = X_mask @ v
+        return out if not needs_squeeze else out.squeeze(-1)
 
 
 def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
@@ -147,7 +157,13 @@ def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
 
     Returns a constraint matrix (or None) and a hessian term (or None)
     """
-
+    # Refactor this to have the ml object know how to form its constraint/hessian
+    if not isinstance(regularizer, ml.Sum):
+        if regularizer.parameter is not None:
+            scale = regularizer.scale * regularizer.parameter.value 
+        else:
+            scale = regularizer.scale
+        
     match regularizer:
         case ml.Sum(exprs):
             constraints = []
@@ -161,21 +177,21 @@ def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
             constraints = torch.vstack(constraints) if len(constraints) > 0 else None
             hessians = sum(hessians) if len(hessians) > 0 else None
             return constraints, hessians
-        case ml.SquareRegularizer(linear, scale, parameter):
+        case ml.SquareRegularizer(linear):
             if linear is None:
                 return None, torch.diag(
-                    scale * parameter.value * torch.ones_like(mask, dtype=beta_hat.dtype)
+                    2 * scale * torch.ones_like(mask, dtype=beta_hat.dtype)
                 )
             elif isinstance(linear, list):
                 diag = torch.zeros_like(mask, dtype=beta_hat.dtype)
-                diag[linear] = scale * parameter.value
+                diag[linear] = scale
                 return None, torch.diag(diag)
             else:
-                A = utils.from_numpy(linear)
+                A = utils.to_tensor(linear)
                 return None, torch.diag(
-                    scale * parameter.value * (A.mT @ A)
+                    scale * (A.mT @ A)
                 )
-        case ml.L1Regularizer(linear, _):
+        case ml.L1Regularizer(linear):
             if linear is None:
                 mask[torch.abs(beta_hat) <= epsilon] = False
                 return None, None
@@ -186,7 +202,7 @@ def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
                 A = utils.from_numpy(linear)
                 return A[torch.abs(A @ beta_hat) <= epsilon, :], None
 
-        case ml.L2Regularizer(linear, scale, paramter):
+        case ml.L2Regularizer(linear):
             if linear is None:
                 if torch.linalg.norm(beta_hat) <= epsilon:
                     mask[:] = False
@@ -208,9 +224,9 @@ def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
                 else:
                     raise NotImplementedError("Hasn't been implemented yet")
                     return None, ...
-            case ml.HuberRegularizer(linear, scale, parameter)
+        case ml.HuberRegularizer(linear, scale, parameter):
+            raise NotImplementedError("TBD")
 
-    return constraints, hessians
 
 
 def transform_model_to_Jacobian(solution_func, loss, regularizer):

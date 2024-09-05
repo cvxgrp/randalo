@@ -5,15 +5,16 @@ import torch
 import numpy as np
 
 
+@dataclass
 class HyperParameter:
-    parameter = field(default_factory=cp.Parameter)
+    parameter: cp.Parameter = field(default_factory=cp.Parameter)
     scale: float = field(init=False, default=1.0)
 
     def __mul__(self, r):
-        if isinstance(r, float | np.float32 | torch.float64 | torch.float32):
+        if isinstance(r, float | np.float32):
             self.scale *= r
         else:
-            raise TypeError("Multiply must be with either a scalar or HyperParameter")
+            return NotImplemented
         return self
 
     @property
@@ -37,7 +38,7 @@ class Regularizer:
             if self.parameter is not None:
                 raise TypeError("Cannot have multiple parameters") 
             self.parameter = r
-        elif isinstance(r, float | np.float32 | torch.float64 | torch.float32):
+        elif isinstance(r, float | np.float32):
             self.scale *= r
         else:
             raise TypeError("Multiply must be with either a scalar or HyperParameter")
