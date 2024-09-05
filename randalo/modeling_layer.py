@@ -20,7 +20,7 @@ class HyperParameter:
     @property
     def value(self):
         return self.scale * self.parameter.value
-    
+
     @value.setter
     def value(self, val):
         assert self.scale == 1.0, "Cannot set the value of a scaled parameter"
@@ -36,7 +36,7 @@ class Regularizer:
     def __mul__(self, r):
         if isinstance(r, HyperParameter):
             if self.parameter is not None:
-                raise TypeError("Cannot have multiple parameters") 
+                raise TypeError("Cannot have multiple parameters")
             self.parameter = r
         elif isinstance(r, float | np.float32):
             self.scale *= r
@@ -101,19 +101,15 @@ class Loss:
 
 
 class LogisticLoss(Loss):
-
     @staticmethod
     def func(y, y_hat):
         return torch.log(1 + torch.exp(-y * y_hat))
 
 
-
 class MSELoss(Loss):
     def __call__(self, y, z):
-        return (y - z) ** 2 / 2
+        return torch.mean((y - z) ** 2 / 2)
 
     @staticmethod
     def func(y, y_hat):
         return (y - y_hat) ** 2 / 2 / np.prod(y.shape)
-
-

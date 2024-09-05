@@ -75,3 +75,7 @@ class TestTruncnorm(unittest.TestCase):
         )
         mean_torch = truncnorm.truncnorm_mean(*td.get_torch_tensors()).numpy()
         self.assertTrue(np.allclose(mean_scipy, mean_torch))
+
+
+if __name__ == "__main__":
+    unittest.main()

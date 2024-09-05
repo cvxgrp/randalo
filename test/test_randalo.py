@@ -43,7 +43,8 @@ class TestRandALO(unittest.TestCase):
             )
         )
         self.assertAlmostEqual(
-            risk, (self.loss(self.y, self.y_hat) / (1 - self.diag) ** 2).mean().item()
+            risk,
+            torch.mean((self.y - self.y_hat) ** 2 / (1 - self.diag) ** 2 / 2).item(),
         )
 
     def test_psd_jac(self):
@@ -61,7 +62,8 @@ class TestRandALO(unittest.TestCase):
         self.assertAlmostEqual(risk, risk_bks, places=3)
         self.assertAlmostEqual(risk, risk_alo, places=3)
         self.assertAlmostEqual(
-            risk_alo, (self.loss(self.y, self.y_hat) / (1 - diag) ** 2).mean().item()
+            risk_alo,
+            torch.mean((self.y - self.y_hat) ** 2 / (1 - diag) ** 2 / 2).item(),
         )
 
     def test_more_matvecs(self):
@@ -120,3 +122,7 @@ class TestRandALO(unittest.TestCase):
             mus, sigmas, torch.tensor([[[0.0]]]), torch.tensor([[[1.0]]])
         )
         self.assertTrue(torch.allclose(uniform_map_estimates, truncnorm_means))
+
+
+if __name__ == "__main__":
+    unittest.main()

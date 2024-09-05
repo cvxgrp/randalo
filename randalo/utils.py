@@ -48,7 +48,8 @@ def compute_derivatives(
     loss_fun : Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
         Loss function to compute derivatives of. The function should take the
         true labels `y` and the predicted values `y_hat` as input and return
-        the element-wise loss.
+        the sum or mean reduction of the element-wise losses as a singleton
+        `torch.Tensor`.
     y : torch.Tensor
         True labels.
     y_hat : torch.Tensor
@@ -71,7 +72,7 @@ def compute_derivatives(
 
     # compute first and second derivatives of loss function
     # we obtain the vector derivatives by summing and then taking the gradient
-    loss = loss_fun(y, y_hat).sum()
+    loss = loss_fun(y, y_hat)
     # keep the graph for computing the second derivatives
     dloss_dy_hat, *_ = autograd.grad(loss, y_hat, create_graph=True)
     dloss_dy_hat_sum = dloss_dy_hat.sum()

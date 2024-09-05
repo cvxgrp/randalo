@@ -135,10 +135,7 @@ class RandALO(object):
             self._y_tilde_from_normalized_jac(normalized_diag_jacs[:, j])
             for j in range(len(subsets))
         ]
-        risks = [
-            torch.sum(risk_fun(self._y, y_tilde)).item() / self._y.shape[0]
-            for y_tilde in y_tildes
-        ]
+        risks = [risk_fun(self._y, y_tilde).item() for y_tilde in y_tildes]
         # return utils.robust_y_intercept(1 / m_primes, risks), m_primes, risks
         return utils.robust_y_intercept(1 / m_primes, risks)
 
@@ -171,7 +168,7 @@ class RandALO(object):
         )
 
         y_tilde = self._y_tilde_from_normalized_jac(normalized_diag_jac_bks)
-        return torch.sum(risk_fun(self._y, y_tilde)).item() / self._y.shape[0]
+        return risk_fun(self._y, y_tilde).item()
 
     def evaluate_alo(
         self, risk_fun: Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
@@ -197,9 +194,7 @@ class RandALO(object):
                     torch.diag(self._normalized_jac @ torch.eye(self._y.shape[0]))
                 )
 
-        return (
-            torch.sum(risk_fun(self._y, self._y_tilde_exact)).item() / self._y.shape[0]
-        )
+        return risk_fun(self._y, self._y_tilde_exact).item()
 
     def _y_tilde_from_normalized_jac(
         self, normalized_jac: torch.Tensor

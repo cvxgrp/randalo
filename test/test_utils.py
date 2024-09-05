@@ -34,7 +34,7 @@ class TestUtils(unittest.TestCase):
         n = 100
 
         def loss_fun(y, z):
-            return (y - z) ** 4
+            return torch.sum((y - z) ** 4)
 
         rng = torch.Generator().manual_seed(0)
         y = torch.randn(n, generator=rng)
@@ -91,3 +91,7 @@ class TestUtils(unittest.TestCase):
 
         y0_hat = utils.robust_y_intercept(x, y)
         self.assertAlmostEqual(y0, y0_hat, places=4)
+
+
+if __name__ == "__main__":
+    unittest.main()

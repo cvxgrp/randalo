@@ -21,22 +21,25 @@ class TestReductions(unittest.TestCase):
     def test_transform_to_cvxpy_and_test_jacobian(self):
         b = cp.Variable(3 * self.n)
         y = cp.Parameter(self.n)
-        prob = reductions.transform_model_to_cvxpy(self.loss, self.regularizer, self.X, y, b)
+        prob = reductions.transform_model_to_cvxpy(
+            self.loss, self.regularizer, self.X, y, b
+        )
         self.layer = CvxpyLayer(prob, parameters=[y], variables=[b])
 
         y_torch = torch.tensor(self.y, requires_grad=True)
-        J = reductions.Jacobian(self.y, self.X, lambda: b.value, self.loss, self.regularizer)
+        J = reductions.Jacobian(
+            self.y, self.X, lambda: b.value, self.loss, self.regularizer
+        )
 
         y.value = self.y
         prob.solve()
         y_hat_torch = torch.from_numpy(self.X) @ self.layer(y_torch)[0]
-        
+
         z = self.rng.standard_normal(self.n)
         Jz = J @ z
         (y_hat_torch @ torch.from_numpy(z)).backward()
         assert torch.allclose(Jz, y_torch.grad.to(torch.float32), atol=1e-4, rtol=1e-2)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
