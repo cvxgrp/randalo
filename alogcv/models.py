@@ -382,10 +382,6 @@ class SeparableRegularizerMixin(ABC):
 
 
 class LinearSeparableRegularizerMixin(ABC):
-    @property
-    @abstractmethod
-    def loss_hessian_diag_(self):
-        pass
 
     @property
     @abstractmethod

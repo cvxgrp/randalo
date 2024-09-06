@@ -1,0 +1,20 @@
+{
+  "id": "test",
+  "seed": 0,
+  "device": "cpu",
+  "data": {
+    "src": "iid_normal_first-diff-sparse_awgn",
+    "n_train": 10,
+    "n_test": 10000,
+    "p": 10,
+    "s": 1,
+    "sigma": 1.0
+  },
+  "method": "first-difference",
+  "method_kwargs": {
+    "lamda0": 1.0
+  },
+  "risk": "squared_error",
+  "cv_k": [2, 5],
+  "alo_m": [10, 30, 50, 100, 300]
+}

@@ -3,9 +3,10 @@
 ## Installation
 
 In a folder run the following:
+
 ```
-git clone git@github.com:cvxgrp/alo.git
-cd alo
+git clone git@github.com:cvxgrp/randalo.git
+cd randalo
 
 # create a new environment with torch & friends (could also use conda or similar)
 python -m venv venv

@@ -7,11 +7,14 @@ import sys
 import numpy as np
 from scipy import stats
 from matplotlib import pyplot as plt, gridspec
-import cmasher as cmr
+
+try:
+    import cmasher as cmr
+except ImportError:
+    cmr = None
 
 
 def setup_matplotlib():
-
     plt.rc("text", usetex=True)
     plt.rc("text.latex", preamble=r"\usepackage{amsmath}\usepackage{bm}")
     plt.rcParams["figure.figsize"] = [6.5, 3]
@@ -47,7 +50,6 @@ def setup_matplotlib():
 
 
 def load_results(results_dir):
-
     aggregate_fn = os.path.join(results_dir, "aggregate.json")
 
     if os.path.isfile(aggregate_fn):
@@ -155,7 +157,6 @@ class ResultsCollection(object):
 
 
 def extract_all_results(results, axes_keys):
-
     cv_k = deep_get(results[0], ["config", "cv_k"])
     alo_m = deep_get(results[0], ["config", "alo_m"])
 
@@ -239,8 +240,11 @@ def extract_all_results(results, axes_keys):
     )
 
 
-def relative_error(a, b):
-    return np.abs(a - b) / b
+def relative_error(a, b, abs=True):
+    if abs:
+        return np.abs(a - b) / b
+    else:
+        return (a - b) / b
 
 
 def grouped_boxplot(
@@ -251,9 +255,9 @@ def grouped_boxplot(
     legend=True,
     color_idx=None,
     hatch_idx=None,
+    width_scale=1.0,
     **kwargs,
 ):
-
     if ax is None:
         ax = plt.gca()
 
@@ -287,7 +291,7 @@ def grouped_boxplot(
         ax.boxplot(
             box_data.T,
             positions=x + (i - n_groups / 2 + 0.5) * width,
-            widths=width,
+            widths=width * width_scale,
             patch_artist=True,
             boxprops=dict(facecolor="none", hatch=hatches[i], edgecolor=color_cycle[i]),
             medianprops=dict(color="black"),  # Set median line color to black
@@ -312,7 +316,6 @@ def grouped_boxplot(
 
 
 def scaling_subplots(results):
-
     markers = ["o", "s", "D", "v", "^", ">", "<", "p", "h", "H", "d", "P", "X"]
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
@@ -359,7 +362,6 @@ def scaling_subplots(results):
 
 
 def lasso_scaling_normal(results):
-
     axes_keys = [
         ["config", "data", "n_train"],
         ["config", "seed"],
@@ -468,23 +470,29 @@ def lasso_scaling_normal(results):
     fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
     grouped_boxplot(
         [
-            results.gen_risks,
-            results.cv_risks[..., i_k],
-            results.alo_bks_risks[..., i_m3],
-            results.alo_poly_risks[..., i_m3],
+            # results.gen_risks,
+            relative_error(results.cv_risks[..., i_k], results.gen_risks, abs=False),
+            relative_error(
+                results.alo_bks_risks[..., i_m3], results.gen_risks, abs=False
+            ),
+            relative_error(
+                results.alo_poly_risks[..., i_m3], results.gen_risks, abs=False
+            ),
         ],
         [f"n={n}" for n in ns],
         [
-            "Conditional risk",
+            # "Conditional risk",
             f"CV($K={k}$)",
             f"BKS-ALO($m={m3}$)",
             f"RandALO($m={m3}$)",
         ],
+        color_idx=[1, 2, 3],
+        hatch_idx=[1, 2, 3],
         ax=axes[0],
     )
 
     # axes[0].set_title("Risk vs. sample size")
-    axes[0].set_ylabel("Squared error")
+    axes[0].set_ylabel("Relative risk estimation error")
     axes[0].set_xlabel("Sample size")
 
     # axes[1].axhline(1, color="black", linestyle="--", label="Training")
@@ -520,7 +528,6 @@ def lasso_scaling_normal(results):
 
 
 def lasso_bks_convergence(results):
-
     axes_keys = [
         ["config", "seed"],
     ]
@@ -531,6 +538,17 @@ def lasso_bks_convergence(results):
     with open(os.path.join("lasso_bks_convergence", "one_example.json"), "r") as f:
         data_one_example = json.load(f)
 
+    # remove half from squared error
+    data_one_example["exact"] *= 2
+    data_one_example["bks"]["risk"] = np.array(data_one_example["bks"]["risk"]) * 2
+    for m0 in [30, 100]:
+        data_one_example["alo"][str(m0)]["w"] = (
+            np.array(data_one_example["alo"][str(m0)]["w"]) * 2
+        )
+        data_one_example["alo"][str(m0)]["risk"] = (
+            np.array(data_one_example["alo"][str(m0)]["risk"]) * 2
+        )
+
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
     fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
@@ -538,17 +556,17 @@ def lasso_bks_convergence(results):
     exact = data_one_example["exact"]
     axes[0].axhline(exact, color="black", linestyle=":", label="Exact ALO")
     xlim = np.asarray([0, 0.08])
-    ylim = np.asarray([0.65, 0.76])
+    ylim = np.asarray([0.65, 0.76]) * 2
     aspect_ratio = (xlim[1] - xlim[0]) / (ylim[1] - ylim[0])
 
-    for angle in np.linspace(0, np.pi / 2, 9)[1:-1]:
-        axes[0].plot(
-            xlim,
-            exact + np.tan(angle) * (xlim - xlim[0]) / aspect_ratio,
-            color="black",
-            linestyle=":",
-            alpha=0.2,
-        )
+    # for angle in np.linspace(0, np.pi / 2, 9)[1:-1]:
+    #     axes[0].plot(
+    #         xlim,
+    #         exact + np.tan(angle) * (xlim - xlim[0]) / aspect_ratio,
+    #         color="black",
+    #         linestyle=":",
+    #         alpha=0.2,
+    #     )
 
     bks = data_one_example["bks"]
     axes[0].plot(
@@ -558,18 +576,30 @@ def lasso_bks_convergence(results):
         label="BKS-ALO",
     )
 
+    marker_cycle = ["^", "*"]
+    sizes = [22, 30]
     for i, m0 in enumerate([30, 100]):
         alo = data_one_example["alo"][str(m0)]
+        y0, y1 = np.vander(np.array([0, 0.1]), 2, True) @ alo["w"]
         axes[0].plot(
-            np.linspace(0, 0.1),
-            np.vander(np.linspace(0, 0.1), 2, True) @ alo["w"],
+            [0, 0.1],
+            [y0, y1],
             color=color_cycle[i + 1],
         )
         axes[0].scatter(
             alo["inv_m"],
             alo["risk"],
-            label=f"Subsampled ALO (m={m0})",
             color=color_cycle[i + 1],
+        )
+        axes[0].scatter(
+            [0],
+            [y0],
+            sizes[i],
+            color=color_cycle[i + 1],
+            marker=marker_cycle[i],
+            zorder=10,
+            clip_on=False,
+            label=f"Subsampled ALO (m={m0})",
         )
 
     axes[0].set_xlim(xlim)
@@ -582,6 +612,9 @@ def lasso_bks_convergence(results):
     ########################################
 
     ms = np.asarray(results.alo_m)
+    results.alo_exact_risks *= 2
+    results.alo_bks_risks *= 2
+    results.alo_poly_risks *= 2
     # ms_recip = ms
     # ms_recip = np.concatenate([1 / ms[:-1], [0.0]])
 
@@ -653,7 +686,6 @@ def lasso_bks_convergence(results):
 
 
 def lasso_sweep(results):
-
     axes_keys = [
         ["config", "method_kwargs", "lamda0"],
         ["config", "seed"],
@@ -665,6 +697,14 @@ def lasso_sweep(results):
     i_k = results.cv_k.index(k)
     m = 50
     i_m = results.alo_m.index(m)
+
+    # remove scaling by 1/2
+    results.cv_risks *= 2
+    results.gen_risks *= 2
+    results.test_risks *= 2
+    results.alo_bks_risks *= 2
+    results.alo_poly_risks *= 2
+    results.alo_exact_risks *= 2
 
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     markers = ["D", "o", "s", "v", "^", ">", "<", "p", "h", "H", "d", "P", "X"]
@@ -748,12 +788,37 @@ def lasso_sweep(results):
 
 
 def confusion_matrix(results):
+    axes_keys = [
+        ["config", "seed"],
+        ["config", "method_kwargs", "lamda0"],
+    ]
 
-    pass
+    results = extract_all_results(results, axes_keys)
+    seeds, lamda0s = results.axes
+    cv_k = results.cv_k
+    alo_m = results.alo_m
+    good_lamda0 = lamda0s.index(10)
+
+    print("Correct selections")
+    print("=====================================")
+
+    amin = np.argmin(results.gen_risks, axis=1)
+    print(f"Generalization error: {np.sum(amin == good_lamda0)}")
+
+    for i, k in enumerate(cv_k):
+        amin = np.argmin(results.cv_risks[..., i], axis=1)
+        print(f"CV({k}) error: {np.sum(amin == good_lamda0)}")
+
+    for i, m in enumerate(alo_m):
+        amin = np.argmin(results.alo_bks_risks[..., i], axis=1)
+        print(f"BKS-ALO({m}) error: {np.sum(amin == good_lamda0)}")
+
+    for i, m in enumerate(alo_m):
+        amin = np.argmin(results.alo_poly_risks[..., i], axis=1)
+        print(f"RandALO({m}) error: {np.sum(amin == good_lamda0)}")
 
 
 def lasso_cv_tradeoff(results):
-
     axes_keys = [
         ["config", "seed"],
     ]
@@ -857,25 +922,28 @@ def lasso_cv_tradeoff(results):
         label="Exact ALO",
     )
 
+    stderr = np.std(results.gen_risks) / gen_risk / np.sqrt(len(seeds))
     plt.axhline(
-        np.std(results.gen_risks) / gen_risk / np.sqrt(len(seeds)),
+        stderr,
         color="black",
         linestyle=":",
         label="True risk standard error",
     )
     plt.xscale("log")
-    plt.yscale("symlog", linthresh=0.01)
+    plt.yscale("symlog", linthresh=stderr, linscale=0.15)
     plt.yticks(
-        [0, 0.005, 0.01, 0.03, 0.1, 0.3],
+        [0, stderr, 0.003, 0.01, 0.03, 0.1, 0.3],
         [
             "$0$",
-            "$0.5\\%$",
+            f"${stderr * 100:.3f}\\%$",
+            "$0.3\\%$",
             "$1\\%$",
             "$3\\%$",
             "$10\\%$",
             "$30\\%$",
         ],
     )
+    plt.minorticks_off()
     plt.xticks(
         [2, 5, 10, 20], ["$2\\times$", "$5\\times$", "$10\\times$", "$20\\times$"]
     )
@@ -883,7 +951,7 @@ def lasso_cv_tradeoff(results):
 
     plt.xlabel("Time relative to full model training")
     plt.ylabel("Relative risk estimation bias")
-    plt.title("Pareto efficiency of randomized ALO")
+    plt.title("Efficiency of randomized ALO")
 
     plt.tight_layout()
 
@@ -939,7 +1007,6 @@ def lasso_cv_tradeoff(results):
 
 
 def comp_all():
-
     comps = [
         "logistic_comp",
         "multivariate_t_comp",
@@ -952,8 +1019,8 @@ def comp_all():
     ]
 
     # fig, axes = plt.subplots(1, 2 * len(comps), figsize=(6.5, 3), dpi=300)
-    fig = plt.figure(figsize=(6.0, 2.8), dpi=300)
-    outer = gridspec.GridSpec(2, len(comps), wspace=0.6, height_ratios=[1, 0])
+    fig = plt.figure(figsize=(5.5, 3.5), dpi=300)
+    outer = gridspec.GridSpec(1, len(comps), wspace=0.1)
 
     axes_keys = [
         ["config", "seed"],
@@ -969,35 +1036,61 @@ def comp_all():
         i_m = results.alo_m.index(m)
 
         inner = gridspec.GridSpecFromSubplotSpec(
-            1, 2, subplot_spec=outer[i], wspace=0, width_ratios=[5, 4]
+            2,
+            1,
+            subplot_spec=outer[i],
+            hspace=0.08,  # width_ratios=[5, 4]
         )
         ax1, ax2 = plt.subplot(inner[0]), plt.subplot(inner[1])
 
         artists = grouped_boxplot(
             [
-                results.gen_risks,
-                results.cv_risks[..., i_k],
-                results.alo_bks_risks[..., i_m],
-                results.alo_poly_risks[..., i_m],
+                # results.gen_risks,
+                relative_error(
+                    results.cv_risks[..., i_k], results.gen_risks, abs=False
+                ),
+                relative_error(
+                    results.alo_bks_risks[..., i_m], results.gen_risks, abs=False
+                ),
+                relative_error(
+                    results.alo_poly_risks[..., i_m], results.gen_risks, abs=False
+                ),
             ],
             [""],
-            ["Test error", f"CV($K={k}$)", f"BKS-ALO($m={m}$)", f"RandALO($m={m}$)"],
+            [
+                # "Test error",
+                f"CV($K={k}$)",
+                f"BKS-ALO($m={m}$)",
+                f"RandALO($m={m}$)",
+            ],
             ax=ax1,
             legend=(i == 2),
+            color_idx=[1, 2, 3],
+            hatch_idx=[1, 2, 3],
+            width_scale=0.8,
         )
-        ax1.set_title("Risk")
+        ax1.set_title(titles[i])
+        if i == 0:
+            ax1.set_ylabel("Relative risk error")
         ax1.set_xticks([])
+        # ylim = ax1.get_ylim()
+        ylim = (-0.12, 0.27)
+        # yticks = ax1.get_yticks()
+        yticks = [-0.2, -0.1, -0.05, 0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+        ax1.set_yticks(yticks)
+        ax1.set_yticklabels(f"${y:.2f}$" for y in yticks)
+        ax1.set_ylim(ylim)
 
         if i == 2:
             ax1.legend(
                 artists,
                 [
-                    "Conditional risk",
+                    # "Conditional risk",
                     f"CV($K={k}$)",
                     f"BKS-ALO($m={m}$)",
                     f"RandALO($m={m}$)",
                 ],
-                loc=(2.4, 0.4),
+                loc=(1.05, -0.25),
                 frameon=False,
             )
 
@@ -1017,19 +1110,29 @@ def comp_all():
             legend=False,
             color_idx=[1, 2, 3],
             hatch_idx=[1, 2, 3],
+            width_scale=0.8,
         )
-        ax2.set_title("Time")
+        if i == 0:
+            ax2.set_ylabel("Relative time")
         ax2.set_xticks([])
-        yticks = ax2.get_yticks()
+        # ylim = ax2.get_ylim()
+        ylim = (1.0, 6.0)
+        # yticks = ax2.get_yticks()
+        yticks = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
         ax2.set_yticks(yticks)
         ax2.set_yticklabels(f"{y:.1f}" for y in yticks)
+        ax2.set_ylim(ylim)
+
+        if i > 0:
+            ax1.set_yticklabels([])
+            ax2.set_yticklabels([])
 
         # ax2.set_yticks(axes[0].get_yticks())
-        ax2.yaxis.tick_right()
+        # ax2.yaxis.tick_right()
 
-        ax3 = plt.subplot(outer[len(comps) + i])
-        ax3.set_title(titles[i])
-        ax3.axis("off")
+        # ax3 = plt.subplot(outer[len(comps) + i])
+        # ax3.set_title(titles[i])
+        # ax3.axis("off")
 
     # plt.tight_layout(pad=0.1)
     plt.savefig(os.path.join("figures", "comp_all.pdf"), bbox_inches="tight")
@@ -1052,7 +1155,6 @@ def random_forest_comp(results):
 
 
 def general_comp(results, out_name, k=5, m=100):
-
     axes_keys = [
         ["config", "seed"],
     ]
@@ -1104,7 +1206,6 @@ def general_comp(results, out_name, k=5, m=100):
 
 
 def first_diff_scaling_1(results):
-
     axes_keys = [
         ["config", "data", "n_train"],
         ["config", "seed"],
@@ -1126,23 +1227,37 @@ def first_diff_scaling_1(results):
     fig, axes = plt.subplots(1, 2, figsize=(6.5, 3), dpi=300)
     grouped_boxplot(
         [
-            results.gen_risks[i_ns, ..., i_lamda0],
-            results.cv_risks[i_ns, ..., i_lamda0, i_k],
-            results.alo_bks_risks[i_ns, ..., i_lamda0, i_m],
-            results.alo_poly_risks[i_ns, ..., i_lamda0, i_m],
+            # results.gen_risks[i_ns, ..., i_lamda0],
+            relative_error(
+                results.cv_risks[i_ns, ..., i_lamda0, i_k],
+                results.gen_risks[i_ns, ..., i_lamda0],
+                abs=False,
+            ),
+            relative_error(
+                results.alo_bks_risks[i_ns, ..., i_lamda0, i_m],
+                results.gen_risks[i_ns, ..., i_lamda0],
+                abs=False,
+            ),
+            relative_error(
+                results.alo_poly_risks[i_ns, ..., i_lamda0, i_m],
+                results.gen_risks[i_ns, ..., i_lamda0],
+                abs=False,
+            ),
         ],
         [f"n={n}" for n in ns_filter],
         [
-            "Conditional risk",
+            # "Conditional risk",
             f"CV($K={k}$)",
             f"BKS-ALO($m={m}$)",
             f"RandALO($m={m}$)",
         ],
         ax=axes[0],
+        color_idx=[1, 2, 3],
+        hatch_idx=[1, 2, 3],
     )
 
     # axes[0].set_title("Risk vs. sample size")
-    axes[0].set_ylabel("Squared error")
+    axes[0].set_ylabel("Relative risk estimation error")
     axes[0].set_xlabel("Sample size")
 
     # axes[1].axhline(1, color="black", linestyle="--", label="Training")
@@ -1189,7 +1304,6 @@ def first_diff_scaling_1(results):
 
 
 def first_diff_scaling():
-
     # TODO: refactor!!!
 
     results = load_results(os.path.join("first_diff_scaling_1", "results"))
@@ -1279,7 +1393,6 @@ def first_diff_scaling():
 
 
 def truncated_normal_viz():
-
     n, p, m = 100, 100, 50
 
     rng = np.random.default_rng(0)
@@ -1362,7 +1475,6 @@ def array_argmin(a, axis=None):
 
 
 def fashion_mnist(results):
-
     axes_keys = [
         ["config", "seed"],
         ["config", "method_kwargs", "lamda"],
@@ -1389,7 +1501,10 @@ def fashion_mnist(results):
             ]
         ]
     )
-    cmap = cmr.get_sub_cmap(cmr.rainforest, 0.15, 1.0)
+    if cmr is not None:
+        cmap = cmr.get_sub_cmap(cmr.rainforest, 0.15, 1.0)
+    else:
+        cmap = "viridis"
 
     train_seconds = np.sum(results.full_train_times[seed, ...])
     print(f"Training time: {train_seconds / 60:.1f} min")
@@ -1448,6 +1563,115 @@ def fashion_mnist(results):
     plt.savefig(os.path.join("figures", "fashion_mnist.pdf"), bbox_inches="tight")
 
 
+def bks_viz():
+    n = 200
+    p = 150
+    m = 10
+    n_trials = 1000
+    lamda = n
+
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    rng = np.random.default_rng(0)
+    Z = rng.integers(0, 2, size=(n, p)) * 2 - 1
+    sample_scales = np.ones(n)
+    # sample_scales += np.arange(1, n + 1) / n
+    sample_scales[n // 4 :] = 2
+    sample_scales[n // 2 :] = 3
+    sample_scales[n // 4 * 3 :] = 4
+    feature_scales = np.ones(p)
+    feature_scales[p // 2 :] = 2
+    X = Z * sample_scales[:, None] * feature_scales[None, :]
+
+    XTX_G_inv = np.linalg.inv(X.T @ X + lamda * np.eye(p))
+    eta = np.trace(XTX_G_inv * feature_scales[None, :] ** 2)
+    nu = np.trace(XTX_G_inv @ X.T @ X @ XTX_G_inv * feature_scales[None, :] ** 2)
+
+    J = X @ np.linalg.solve(X.T @ X + lamda * np.eye(p), X.T)
+    bks_means = np.diag(J)
+    bks_stds = sample_scales * np.sqrt(nu) / (1 + sample_scales**2 * eta)
+
+    bks_W = rng.integers(0, 2, size=(n, m, n_trials)) * 2 - 1
+    D = np.einsum("ij,jkl->ikl", J, bks_W) * bks_W
+    mu = np.mean(D, axis=1)
+
+    fig, axes = plt.subplots(1, 3, figsize=(6.5, 2.7), dpi=150)
+
+    ax = axes[0]
+
+    xs = np.linspace(np.min(mu), np.max(mu), 100)
+    bins = np.linspace(np.min(mu), np.max(mu), 50)
+
+    ax.hist(
+        bks_means,
+        bins=bins,
+        density=True,
+        alpha=0.5,
+        label="$\\tilde{J}_{ii}$",
+        color=color_cycle[2],
+    )
+    ax.hist(
+        mu.ravel(),
+        bins=bins,
+        density=True,
+        alpha=0.5,
+        label="$\\mu_i$",
+        color=color_cycle[0],
+    )
+    ax.plot(
+        xs,
+        sum(
+            (
+                stats.norm.pdf(xs, loc=mean, scale=std) / n
+                for mean, std in zip(bks_means, bks_stds / np.sqrt(m))
+            ),
+            start=0,
+        ),
+        label="Theorem 1",
+        color=color_cycle[1],
+    )
+    ax.legend()
+    ax.set_title("Empirical distribution of $\\mu_i$")
+
+    ax = axes[1]
+
+    z_scores = (D[:, :, :] - bks_means[:, None, None]) / bks_stds[:, None, None]
+    z_scores_marginal = z_scores.ravel()
+
+    zs = np.linspace(-3.5, 3.5, 100)
+    bins = np.linspace(-3.5, 3.5, 50)
+    ax.hist(z_scores_marginal, bins=bins, density=True, alpha=0.5, label="$z$-scores")
+    ax.plot(zs, stats.norm.pdf(zs), label="$\\mathcal{N}(0, 1)$")
+    ax.legend()
+    ax.set_title("Gaussianity of $z$-scores")
+    ax.set_ylim(0, 0.5)
+
+    ax = axes[2]
+
+    z_0 = z_scores[:-1, 0, 0].ravel()
+    z_1 = z_scores[1:, 0, 0].ravel()
+    corr = np.corrcoef(z_0, z_1)[0, 1]
+
+    ax.scatter(z_0, z_1, alpha=0.5)
+    ax.set_title(f"Pairwise correlation: {corr:.2g}")
+    ax.set_xlabel("$z_i$")
+    ax.set_ylabel("$z_{i+1}$")
+    ax.axis("equal")
+    ax.set_xlim(-4, 4)
+    ax.set_ylim(-4, 4)
+
+    plt.tight_layout(w_pad=0.1)
+    axes[1].set_position(
+        [
+            axes[1].get_position().x0 - 0.01,
+            axes[1].get_position().y0,
+            axes[1].get_position().width,
+            axes[1].get_position().height,
+        ]
+    )
+    plt.savefig(os.path.join("figures", "bks_viz.pdf"), bbox_inches="tight")
+
+
 collect_mapping = {
     "categorical_comp": categorical_comp,
     "lasso_bks_convergence": lasso_bks_convergence,
@@ -1463,11 +1687,11 @@ collect_mapping = {
     "truncated_normal_viz": truncated_normal_viz,
     "first_diff_scaling_1": first_diff_scaling_1,
     "fashion_mnist": fashion_mnist,
+    "bks_viz": bks_viz,
 }
 
 
 if __name__ == "__main__":
-
     setup_matplotlib()
 
     benchmarks = sys.argv[1:]
