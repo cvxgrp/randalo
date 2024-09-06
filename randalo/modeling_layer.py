@@ -11,6 +11,7 @@ class HyperParameter:
     scale: float = field(init=False, default=1.0)
 
     def __mul__(self, r):
+        # TODO: __mul__ should not have side-effects
         if isinstance(r, float | np.float32):
             self.scale *= r
         else:
@@ -34,6 +35,7 @@ class Regularizer:
     parameter: HyperParameter = field(init=False, default=None)
 
     def __mul__(self, r):
+        # TODO: __mul__ should not have side-effects
         if isinstance(r, HyperParameter):
             if self.parameter is not None:
                 raise TypeError("Cannot have multiple parameters")

@@ -1,6 +1,6 @@
 import importlib.util
 
-from .randalo import RandALO, SklearnRandALO
+from .randalo import RandALO
 
 from . import modeling_layer
 from . import randalo
