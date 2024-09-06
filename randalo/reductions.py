@@ -74,7 +74,7 @@ class Jacobian(lo.LinearOperator):
 
     _diag: torch.Tensor = None
 
-    @functools.cached_property
+    # @functools.cached_property
     def diag(self):
         return torch.diag(self @ torch.eye(self.shape[1]))
 
