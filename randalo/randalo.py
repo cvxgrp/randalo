@@ -2,10 +2,13 @@ from typing import Callable
 
 import linops as lo
 import numpy as np
+import sklearn.base
+import sklearn.linear_model
 import sklearn.utils.validation
 import torch
 
 from . import modeling_layer as ml
+from . import reductions
 from . import truncnorm
 from . import utils
 
@@ -328,3 +331,41 @@ class RandALO(object):
         jac = ml.Jacobian()
 
         return cls(loss=loss, jac=jac, y=y, y_hat=y_hat)
+
+
+class SklearnRandALO(RandALO):
+    def __init__(
+        self,
+        model: sklearn.base.BaseEstimator = None,
+        X: np.ndarray = None,
+        y: torch.Tensor | np.ndarray = None,
+    ):
+        sklearn.utils.validation.check_is_fitted(model)
+        self.model = model
+
+        loss, jac, y_hat = map_sklearn_to_loss_jac_y_hat(model, X, y)
+
+        super().__init__(loss=loss, jac=jac, y=y, y_hat=y_hat)
+
+
+def map_sklearn_to_loss_jac_y_hat(model, X, y):
+    match model:
+        case sklearn.linear_model.LinearRegression():
+            loss = ml.MSELoss()
+            # TODO create trivial regularizer
+            reg = 0.0 * ml.SquareRegularizer()
+            y_hat = model.predict(X)
+
+        case sklearn.linear_model.Ridge():
+            loss = ml.MSELoss()
+            reg = model.alpha * ml.SquareRegularizer()
+            y_hat = model.predict(X)
+
+        case sklearn.linear_model.Lasso():
+            loss = ml.MSELoss()
+            reg = 2.0 * model.alpha * ml.L1Regularizer()
+            y_hat = model.predict(X)
+
+    jac = reductions.Jacobian(y, X, lambda: model.coef_, loss, reg, inverse_method=None)
+
+    return loss, jac, y_hat

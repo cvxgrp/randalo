@@ -2,9 +2,14 @@ import unittest
 
 import linops as lo
 import numpy as np
+import sklearn.linear_model
+import sklearn.linear_model._coordinate_descent
 import torch
 
-from randalo import RandALO, modeling_layer as ml, truncnorm
+from randalo import RandALO, SklearnRandALO
+from randalo import modeling_layer as ml
+from randalo import truncnorm
+from randalo import utils
 
 
 class TestRandALO(unittest.TestCase):
@@ -44,7 +49,7 @@ class TestRandALO(unittest.TestCase):
         )
         self.assertAlmostEqual(
             risk,
-            torch.mean((self.y - self.y_hat) ** 2 / (1 - self.diag) ** 2 / 2).item(),
+            torch.mean((self.y - self.y_hat) ** 2 / (1 - self.diag) ** 2).item(),
         )
 
     def test_psd_jac(self):
@@ -63,7 +68,7 @@ class TestRandALO(unittest.TestCase):
         self.assertAlmostEqual(risk, risk_alo, places=3)
         self.assertAlmostEqual(
             risk_alo,
-            torch.mean((self.y - self.y_hat) ** 2 / (1 - diag) ** 2 / 2).item(),
+            torch.mean((self.y - self.y_hat) ** 2 / (1 - diag) ** 2).item(),
         )
 
     def test_more_matvecs(self):
@@ -122,6 +127,72 @@ class TestRandALO(unittest.TestCase):
             mus, sigmas, torch.tensor([[[0.0]]]), torch.tensor([[[1.0]]])
         )
         self.assertTrue(torch.allclose(uniform_map_estimates, truncnorm_means))
+
+
+class TestSklearnRandALO(unittest.TestCase):
+    def setUp(self):
+        self.n = 10
+        self.p = 8
+        self.rng = np.random.default_rng(0)
+        self.X = self.rng.normal(0, 1, (self.n, self.p))
+        self.beta = self.rng.normal(0, 1 / np.sqrt(self.p), (self.p))
+        self.y = self.X @ self.beta + self.rng.normal(0, 1, (self.n))
+
+    def test_linear_regression(self):
+        lr = sklearn.linear_model.LinearRegression(fit_intercept=False)
+        lr.fit(self.X, self.y)
+
+        Q, _ = np.linalg.qr(self.X)
+        jac = utils.to_tensor(Q @ Q.T)
+
+        ra = SklearnRandALO(lr, self.X, self.y)
+        ra_jac = ra._jac @ torch.eye(self.n)
+
+        self.assertTrue(torch.allclose(jac, ra_jac, atol=1e-6))
+
+    def test_lasso(self):
+        # get a path of parameters
+        alphas = sklearn.linear_model._coordinate_descent._alpha_grid(
+            self.X,
+            self.y,
+            fit_intercept=False,
+            l1_ratio=1.0,
+            n_alphas=10,
+        )
+
+        # store the unique numbers of nonzeros over the alphas
+        nnzs = set()
+
+        # fit a lasso model for each alpha and check
+        for alpha in alphas:
+            lasso = sklearn.linear_model.Lasso(alpha=alpha, fit_intercept=False)
+            lasso.fit(self.X, self.y)
+
+            mask = lasso.coef_ != 0
+            X_mask = self.X[:, mask]
+            nnzs.add(np.sum(mask))
+
+            Q, _ = np.linalg.qr(X_mask)
+            jac = utils.to_tensor(Q @ Q.T)
+
+            ra = SklearnRandALO(lasso, self.X, self.y)
+            ra_jac = ra._jac @ torch.eye(self.n)
+
+            self.assertTrue(torch.allclose(jac, ra_jac, atol=1e-6))
+
+            # numerically check the derivative in a random direction
+            y_hat = lasso.predict(self.X)
+            dy = self.rng.normal(0, 1e-6, (self.n,))
+            lasso.fit(self.X, self.y + dy)
+            y_hat2 = lasso.predict(self.X)
+
+            dy = utils.to_tensor(dy)
+            dy_hat = utils.to_tensor(y_hat2 - y_hat)
+
+            self.assertTrue(torch.allclose(dy_hat, ra_jac @ dy, atol=1e-6))
+
+        # make sure we've actually checked different sparsity patterns
+        self.assertTrue(len(nnzs) > 3)
 
 
 if __name__ == "__main__":

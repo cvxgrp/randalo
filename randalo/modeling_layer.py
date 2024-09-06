@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 
 import cvxpy as cp
-import torch
 import numpy as np
+import torch
 
 
 @dataclass
@@ -108,7 +108,7 @@ class LogisticLoss(Loss):
 
 class MSELoss(Loss):
     def __call__(self, y, z):
-        return torch.mean((y - z) ** 2 / 2)
+        return torch.mean((y - z) ** 2)
 
     @staticmethod
     def func(y, y_hat):

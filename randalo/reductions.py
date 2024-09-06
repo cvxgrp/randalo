@@ -43,16 +43,19 @@ def loss_to_cvxpy(obj, X, y, variable):
 
 
 def transform_model_to_cvxpy(loss, regularizer, X, y, variable):
-    return cp.Problem(cp.Minimize(
-        loss_to_cvxpy(loss, X, y, variable) + regularizer_sum_to_cvxpy(regularizer, variable)
-    ))
+    return cp.Problem(
+        cp.Minimize(
+            loss_to_cvxpy(loss, X, y, variable)
+            + regularizer_sum_to_cvxpy(regularizer, variable)
+        )
+    )
 
 
 class Jacobian(lo.LinearOperator):
     solution_func: Callable[[], torch.Tensor]
     loss: ml.Loss
     regularizer: ml.Sum | ml.Regularizer
-    inverse_method: Literal[None, 'minres', 'cholesky']
+    inverse_method: Literal[None, "minres", "cholesky"]
 
     supports_operator_matrix = True
 
@@ -84,7 +87,9 @@ class Jacobian(lo.LinearOperator):
         beta_hat = utils.to_tensor(self.solution_func())
         y = self.y
         X = self.X
-        y, y_hat, dloss_dy_hat, d2loss_dboth, d2loss_dy_hat2 = utils.compute_derivatives(self.loss.func, y, X @ beta_hat)
+        _, _, _, d2loss_dboth, d2loss_dy_hat2 = utils.compute_derivatives(
+            self.loss, y, X @ beta_hat
+        )
 
         mask = torch.ones_like(beta_hat.squeeze(), dtype=bool)
 
@@ -93,59 +98,60 @@ class Jacobian(lo.LinearOperator):
         rhs_scaled = -d2loss_dboth[:, None] * rhs
 
         if constraints is None and hessians is None:
-            tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
-            Q, R = torch.linalg.qr(tilde_X)
-            return Q @ (Q.T @ rhs_scaled)
+            sqrt_d2loss_dy_hat2 = torch.sqrt(d2loss_dy_hat2)[:, None]
+            tilde_X = sqrt_d2loss_dy_hat2 * X_mask
+            Q, _ = torch.linalg.qr(tilde_X)
+            return (
+                Q @ (Q.T @ (rhs_scaled / sqrt_d2loss_dy_hat2))
+            ) / sqrt_d2loss_dy_hat2
         elif constraints is None:
             kkt_rhs = X_mask.T @ rhs_scaled
             if hessians is None:
                 tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
-                _, R = torch.linalg.qr(tilde_X, mode='r')
+                _, R = torch.linalg.qr(tilde_X, mode="r")
             else:
                 hessians_mask = hessians[mask, :][:, mask]
                 P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
                 R = torch.linalg.cholesky(P, upper=True)
             v = torch.linalg.solve_triangular(
-                R, torch.linalg.solve_triangular(
-                    R.T, kkt_rhs, upper=False
-                ), upper=True
+                R, torch.linalg.solve_triangular(R.T, kkt_rhs, upper=False), upper=True
             )
         else:
             constraints_mask = constraints[:, mask]
             n, m = constraints_mask.shape
             if n >= m:
-                _, N = torch.linalg.qr(constraints_mask, mode='r')
+                _, N = torch.linalg.qr(constraints_mask, mode="r")
             else:
                 N = constraints_mask
-            
+
             if hessians is None:
                 tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
-                _, P_R = torch.linalg.qr(tilde_X, mode='r')
+                _, P_R = torch.linalg.qr(tilde_X, mode="r")
             else:
                 hessians_mask = hessians[mask, :][:, mask]
                 P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
                 P_R = torch.linalg.cholesky(P, upper=True)
- 
+
             S = self.D_nmask @ torch.linalg.solve_triangular(
-                P_R, torch.linalg.solve_triangular(
-                    P_R.T, kkt_rhs, upper=False
-                ), upper=True
+                P_R,
+                torch.linalg.solve_triangular(P_R.T, kkt_rhs, upper=False),
+                upper=True,
             )
             S_R = torch.linalg.cholesky(S, upper=True)
             NPinvRhs = N @ torch.linalg.solve_triangular(
-                P_R, torch.linalg.solve_triangular(
-                    P_R.T, kkt_rhs, upper=False
-                ), upper=True
+                P_R,
+                torch.linalg.solve_triangular(P_R.T, kkt_rhs, upper=False),
+                upper=True,
             )
             nu = torch.linalg.solve_triangular(
-                S_R, torch.linalg.solve_triangular(
-                    S_R.T, -NPinvRhs, upper=False
-                ), upper=True
+                S_R,
+                torch.linalg.solve_triangular(S_R.T, -NPinvRhs, upper=False),
+                upper=True,
             )
             v = torch.linalg.solve_triangular(
-                P_R, torch.linalg.solve_triangular(
-                    P_R.T, kkt_rhs + N.T @ nu, upper=False
-                ), upper=True
+                P_R,
+                torch.linalg.solve_triangular(P_R.T, kkt_rhs + N.T @ nu, upper=False),
+                upper=True,
             )
         out = X_mask @ v
         return out if not needs_squeeze else out.squeeze(-1)
@@ -160,10 +166,10 @@ def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
     # Refactor this to have the ml object know how to form its constraint/hessian
     if not isinstance(regularizer, ml.Sum):
         if regularizer.parameter is not None:
-            scale = regularizer.scale * regularizer.parameter.value 
+            scale = regularizer.scale * regularizer.parameter.value
         else:
             scale = regularizer.scale
-        
+
     match regularizer:
         case ml.Sum(exprs):
             constraints = []
@@ -188,9 +194,7 @@ def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
                 return None, torch.diag(diag)
             else:
                 A = utils.to_tensor(linear)
-                return None, torch.diag(
-                    scale * (A.mT @ A)
-                )
+                return None, torch.diag(scale * (A.mT @ A))
         case ml.L1Regularizer(linear):
             if linear is None:
                 mask[torch.abs(beta_hat) <= epsilon] = False
@@ -226,7 +230,6 @@ def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
                     return None, ...
         case ml.HuberRegularizer(linear, scale, parameter):
             raise NotImplementedError("TBD")
-
 
 
 def transform_model_to_Jacobian(solution_func, loss, regularizer):
