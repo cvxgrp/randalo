@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 import cvxpy as cp
@@ -40,14 +41,18 @@ class Regularizer:
             if self.parameter is not None:
                 raise TypeError("Cannot have multiple parameters")
             self.parameter = r
-        elif isinstance(r, float | np.float32):
-            self.scale *= r
+        # elif isinstance(r, float | np.float32): # <- didn't allow integers or other floats...
         else:
-            raise TypeError("Multiply must be with either a scalar or HyperParameter")
+            self.scale *= r
+        # else:
+        #     raise TypeError("Multiply must be with either a scalar or HyperParameter")
         return self
 
     def __rmul__(self, r):
         return self * r
+
+    def __truediv__(self, r):
+        return self * (1 / r)
 
     def __add__(self, rhs):
         if isinstance(rhs, Sum):
@@ -87,6 +92,9 @@ class Sum:
     def __rmul__(self, r):
         return self * r
 
+    def __truediv__(self, r):
+        return self * (1 / r)
+
     def __add__(self, r):
         if isinstance(r, Sum):
             return Sum(r.exprs + self.exprs)
@@ -94,24 +102,20 @@ class Sum:
             return NotImplemented
 
 
-# @dataclass
 class Loss:
-    # we don't need to store data with the loss
-    # y: torch.Tensor
-    # X: torch.Tensor
-    pass
+    def __call__(self, y, z):
+        return torch.mean(self.func(y, z))
+
+    @abstractmethod
+    def func(self, y, z):
+        pass
 
 
 class LogisticLoss(Loss):
-    @staticmethod
-    def func(y, y_hat):
-        return torch.log(1 + torch.exp(-y * y_hat))
+    def func(self, y, z):
+        return torch.log(1 + torch.exp(-y * z))
 
 
 class MSELoss(Loss):
-    def __call__(self, y, z):
-        return torch.mean((y - z) ** 2)
-
-    @staticmethod
-    def func(y, y_hat):
-        return (y - y_hat) ** 2 / 2 / np.prod(y.shape)
+    def func(self, y, z):
+        return (y - z) ** 2

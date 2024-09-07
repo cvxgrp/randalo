@@ -1,22 +1,30 @@
 import unittest
 
 import numpy as np
+import scipy
+import scipy.special
 import sklearn.linear_model
 import sklearn.linear_model._coordinate_descent
 import torch
 
 from randalo import RandALO
+from randalo import modeling_layer as ml
 from randalo import utils
 
 
 class TestSklearnRandALO(unittest.TestCase):
     def setUp(self):
+        np.random.seed(0)
         self.n = 10
         self.p = 8
         self.rng = np.random.default_rng(0)
         self.X = self.rng.normal(0, 1, (self.n, self.p))
         self.beta = self.rng.normal(0, 1 / np.sqrt(self.p), (self.p))
         self.y = self.X @ self.beta + self.rng.normal(0, 1, (self.n))
+        self.y_bin = (
+            self.rng.uniform(0, 1, (self.n,))
+            < scipy.special.expit(4 * self.X @ self.beta)
+        ).astype(int)
 
     def compute_dy_hat(self, model, dy):
         model.fit(self.X, self.y)
@@ -44,8 +52,10 @@ class TestSklearnRandALO(unittest.TestCase):
         sim = dy_hat / torch.norm(dy_hat) @ djac / torch.norm(djac)
         self.assertGreaterEqual(sim, sim_thresh)
 
-    def get_randalo_jac(self, model):
-        ra = RandALO.from_sklearn(model, self.X, self.y)
+    def get_randalo_jac(self, model, y=None):
+        if y is None:
+            y = self.y
+        ra = RandALO.from_sklearn(model, self.X, y)
         return ra._jac @ torch.eye(self.n)
 
     def test_linear_regression(self):
@@ -93,13 +103,16 @@ class TestSklearnRandALO(unittest.TestCase):
             self.assertRandomJacobianDirectionAlmostEqual(ridge, ra_jac)
 
     def test_lasso(self):
-        # get a path of parameters
-        alphas = sklearn.linear_model._coordinate_descent._alpha_grid(
-            self.X,
-            self.y,
-            fit_intercept=False,
-            l1_ratio=1.0,
-            n_alphas=10,
+        # get a path of parameters and shrink a bit so we aren't at the max
+        alphas = (
+            sklearn.linear_model._coordinate_descent._alpha_grid(
+                self.X,
+                self.y,
+                fit_intercept=False,
+                l1_ratio=1.0,
+                n_alphas=10,
+            )
+            * 0.99
         )
 
         # store the unique numbers of nonzeros over the alphas
@@ -107,8 +120,14 @@ class TestSklearnRandALO(unittest.TestCase):
 
         # fit a lasso model for each alpha and check Jacobian
         for alpha in alphas:
-            lasso = sklearn.linear_model.Lasso(alpha=alpha, fit_intercept=False)
+            lasso = sklearn.linear_model.Lasso(
+                alpha=alpha, fit_intercept=False, tol=1e-8
+            )
             lasso.fit(self.X, self.y)
+            lasso_lars = sklearn.linear_model.LassoLars(
+                alpha=alpha, fit_intercept=False, max_iter=10000
+            )
+            lasso_lars.fit(self.X, self.y)
 
             mask = lasso.coef_ != 0
             X_mask = self.X[:, mask]
@@ -118,23 +137,33 @@ class TestSklearnRandALO(unittest.TestCase):
             Q, _ = np.linalg.qr(X_mask)
             jac = utils.to_tensor(Q @ Q.T)
             ra_jac = self.get_randalo_jac(lasso)
+            ra_jac_lars = self.get_randalo_jac(lasso_lars)
             self.assertTrue(torch.allclose(jac, ra_jac, atol=1e-6))
+            self.assertTrue(torch.allclose(jac, ra_jac_lars, atol=1e-6))
 
             # check numerically
-            self.assertRandomJacobianDirectionAlmostEqual(lasso, ra_jac, norm_rtol=0.02)
+            self.assertRandomJacobianDirectionAlmostEqual(
+                lasso, ra_jac, sim_thresh=0.999, norm_rtol=1e-3
+            )
+            self.assertRandomJacobianDirectionAlmostEqual(
+                lasso_lars, ra_jac, sim_thresh=0.9999, norm_rtol=1e-2
+            )
 
         # make sure we've actually checked different sparsity patterns
         self.assertTrue(len(nnzs) > 3)
 
     def test_elastic_net(self):
-        # get a path of parameters
+        # get a path of parameters and shrink a bit
         l1_ratio = 0.5
-        alphas = sklearn.linear_model._coordinate_descent._alpha_grid(
-            self.X,
-            self.y,
-            fit_intercept=False,
-            l1_ratio=l1_ratio,
-            n_alphas=10,
+        alphas = (
+            sklearn.linear_model._coordinate_descent._alpha_grid(
+                self.X,
+                self.y,
+                fit_intercept=False,
+                l1_ratio=l1_ratio,
+                n_alphas=10,
+            )
+            * 0.99
         )
 
         # store the unique numbers of nonzeros over the alphas
@@ -143,7 +172,7 @@ class TestSklearnRandALO(unittest.TestCase):
         # fit a lasso model for each alpha and check Jacobian
         for alpha in alphas:
             enet = sklearn.linear_model.ElasticNet(
-                alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False
+                alpha=alpha, l1_ratio=l1_ratio, fit_intercept=False, tol=1e-8
             )
             enet.fit(self.X, self.y)
 
@@ -169,6 +198,63 @@ class TestSklearnRandALO(unittest.TestCase):
 
         # make sure we've actually checked different sparsity patterns
         self.assertTrue(len(nnzs) > 3)
+
+    def test_logistic(self):
+        param_dicts = [
+            {"penalty": None, "eye_scale": 0.0},
+            {"penalty": "l1", "C": 1.0, "eye_scale": 0.0},
+            {"penalty": "l2", "C": 1.0, "eye_scale": 1.0},
+            {"penalty": "elasticnet", "C": 1.0, "l1_ratio": 0.5, "eye_scale": 0.5},
+        ]
+        lr = sklearn.linear_model.LogisticRegression(
+            tol=1e-5, solver="saga", max_iter=100000, fit_intercept=False
+        )
+
+        y = utils.to_tensor(self.y_bin * 2 - 1)
+        y_labels = np.array(["a", "b"])[self.y_bin]
+        nnzs = set()
+
+        for param_dict in param_dicts:
+            eye_scale = param_dict.pop("eye_scale")
+            lr.set_params(**param_dict)
+            lr.fit(self.X, y_labels)
+
+            mask = lr.coef_[0, :] != 0
+            X_mask = self.X[:, mask]
+            n_mask = np.sum(mask)
+            nnzs.add(n_mask)
+
+            y_hat = utils.to_tensor(lr.decision_function(self.X))
+            ds = utils.compute_derivatives(ml.LogisticLoss(), y, y_hat)
+            d2loss_dboth = ds.d2loss_dboth.numpy()
+            d2loss_dy_hat2 = ds.d2loss_dy_hat2.numpy()
+
+            jac = utils.to_tensor(
+                -X_mask
+                @ np.linalg.solve(
+                    X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask)
+                    + eye_scale / self.n * np.eye(n_mask),
+                    X_mask.T * d2loss_dboth[None, :],
+                )
+            )
+            ra_jac = self.get_randalo_jac(lr, y=y_labels)
+            atol = 1e-2 if param_dict["penalty"] is None else 1e-6
+            self.assertTrue(torch.allclose(jac, ra_jac, atol=atol))
+
+            # check that wrong y = wrong Jacobian
+            ds_bad = utils.compute_derivatives(ml.LogisticLoss(), -y, y_hat)
+            d2loss_dboth_bad = ds_bad.d2loss_dboth.numpy()
+            d2loss_dy_hat2_bad = ds_bad.d2loss_dy_hat2.numpy()
+
+            jac_bad = utils.to_tensor(
+                -X_mask
+                @ np.linalg.solve(
+                    X_mask.T @ (d2loss_dy_hat2_bad[:, None] * X_mask)
+                    + eye_scale / self.n * np.eye(n_mask),
+                    X_mask.T * d2loss_dboth_bad[None, :],
+                )
+            )
+            self.assertFalse(torch.allclose(jac_bad, ra_jac, atol=atol))
 
 
 if __name__ == "__main__":

@@ -164,6 +164,7 @@ def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
     Returns a constraint matrix (or None) and a hessian term (or None)
     """
     # Refactor this to have the ml object know how to form its constraint/hessian
+    # TODO: don't modify mask in place
     if not isinstance(regularizer, ml.Sum):
         if regularizer.parameter is not None:
             scale = regularizer.scale * regularizer.parameter.value

@@ -42,4 +42,6 @@ We currently support the following models:
 - `LinearRegression`
 - `Ridge`
 - `Lasso`
+- `LassoLars`
 - `ElasticNet`
+- `LogisticRegression`

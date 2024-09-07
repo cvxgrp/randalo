@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, NamedTuple
 
 import numpy as np
 import sklearn.linear_model
@@ -36,11 +36,20 @@ def to_tensor(
         raise ValueError("Input must be a numpy array or torch tensor")
 
 
+class LossDerivatives(NamedTuple):
+    y: torch.Tensor
+    y_hat: torch.Tensor
+    y: torch.Tensor
+    dloss_dy_hat: torch.Tensor
+    d2loss_dboth: torch.Tensor
+    d2loss_dy_hat2: torch.Tensor
+
+
 def compute_derivatives(
     loss_fun: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
     y: torch.Tensor,
     y_hat: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> LossDerivatives:
     """Compute first and second derivatives of a loss function.
 
     Parameters
@@ -86,7 +95,7 @@ def compute_derivatives(
         d2loss_dy_hat2 = torch.zeros_like(y_hat)
 
     # free memory used by autograd and return
-    return (
+    return LossDerivatives(
         y.detach(),
         y_hat.detach(),
         dloss_dy_hat.detach(),

@@ -320,6 +320,25 @@ class RandALO(object):
         model: sklearn.base.BaseEstimator = None,
         X: torch.Tensor | np.ndarray = None,
         y: torch.Tensor | np.ndarray = None,
-    ):
-        loss, jac, y_hat = ski.map_sklearn_to_loss_jac_y_hat(model, X, y)
+    ) -> "RandALO":
+        """Instantiate a RandALO object from a scikit-learn model.
+
+        Automatically converts a fitted scikit-learn model to a RandALO object
+        by mapping the model and parameters to the appropriate loss and Jacobian.
+
+        Parameters
+        ----------
+        model : sklearn.base.BaseEstimator
+            The fitted scikit-learn estimator.
+        X : torch.Tensor | np.ndarray
+            The training data that the model was fitted on.
+        y : torch.Tensor | np.ndarray | list
+            The training labels that the model was fitted on.
+
+        Returns
+        -------
+        RandALO
+            The instantiated RandALO object.
+        """
+        loss, jac, y, y_hat = ski.map_sklearn(model, X, y)
         return cls(loss=loss, jac=jac, y=y, y_hat=y_hat)

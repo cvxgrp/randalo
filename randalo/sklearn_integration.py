@@ -9,19 +9,22 @@ from . import modeling_layer as ml
 from . import reductions
 
 
-def map_sklearn_to_loss_jac_y_hat(
+def map_sklearn(
     model: sklearn.base.BaseEstimator = None,
     X: torch.Tensor | np.ndarray = None,
-    y: torch.Tensor | np.ndarray = None,
+    y: torch.Tensor | np.ndarray | list = None,
 ):
     sklearn.utils.validation.check_is_fitted(model)
     n = X.shape[0]
+
+    def solution_func():
+        return model.coef_
 
     match model:
         case sklearn.linear_model.LinearRegression():
             loss = ml.MSELoss()
             # TODO create trivial regularizer
-            reg = 0.0 * ml.SquareRegularizer()
+            reg = 0 * ml.SquareRegularizer()
             y_hat = model.predict(X)
 
         case sklearn.linear_model.Ridge():
@@ -29,7 +32,7 @@ def map_sklearn_to_loss_jac_y_hat(
             reg = model.alpha / n * ml.SquareRegularizer()
             y_hat = model.predict(X)
 
-        case sklearn.linear_model.Lasso():
+        case sklearn.linear_model.Lasso() | sklearn.linear_model.LassoLars():
             loss = ml.MSELoss()
             reg = 2.0 * model.alpha * ml.L1Regularizer()
             y_hat = model.predict(X)
@@ -42,6 +45,32 @@ def map_sklearn_to_loss_jac_y_hat(
             )
             y_hat = model.predict(X)
 
-    jac = reductions.Jacobian(y, X, lambda: model.coef_, loss, reg, inverse_method=None)
+        case sklearn.linear_model.LogisticRegression():
+            # TODO: implement sample weight
+            if len(model.classes_) > 2:
+                raise ValueError("Only binary classification is supported.")
 
-    return loss, jac, y_hat
+            loss = ml.LogisticLoss()
+            y = ((model.classes_[None, :] == y[:, None]) * np.array([[-1, 1]])).sum(1)
+            match model.penalty:
+                case None:
+                    # TODO: create trivial regularizer
+                    reg = 0 * ml.SquareRegularizer()
+                case "l1":
+                    reg = ml.L1Regularizer()
+                case "l2":
+                    reg = 0.5 * ml.SquareRegularizer()
+                case "elasticnet":
+                    reg = (
+                        model.l1_ratio * ml.L1Regularizer()
+                        + 0.5 * (1 - model.l1_ratio) * ml.SquareRegularizer()
+                    )
+            reg = reg * 1 / model.C / n
+            y_hat = model.decision_function(X)
+
+            def solution_func():
+                return model.coef_[0, :]
+
+    jac = reductions.Jacobian(y, X, solution_func, loss, reg, inverse_method=None)
+
+    return loss, jac, y, y_hat
