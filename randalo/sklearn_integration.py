@@ -13,7 +13,7 @@ def map_sklearn(
     model: sklearn.base.BaseEstimator = None,
     X: torch.Tensor | np.ndarray = None,
     y: torch.Tensor | np.ndarray | list = None,
-):
+) -> tuple[ml.Loss, reductions.Jacobian, torch.Tensor, torch.Tensor]:
     sklearn.utils.validation.check_is_fitted(model)
     n = X.shape[0]
 

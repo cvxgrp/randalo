@@ -94,7 +94,7 @@ class RandALO(object):
 
     def evaluate(
         self,
-        risk_fun: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
+        risk_fun: Callable[[torch.Tensor, torch.Tensor], float],
         n_matvecs: int = 100,
         subsets: list[list[int]] | int = 50,
     ) -> float:
@@ -136,7 +136,7 @@ class RandALO(object):
             self._y_tilde_from_normalized_jac(normalized_diag_jacs[:, j])
             for j in range(len(subsets))
         ]
-        risks = [risk_fun(self._y, y_tilde).item() for y_tilde in y_tildes]
+        risks = [risk_fun(self._y, y_tilde) for y_tilde in y_tildes]
         # return utils.robust_y_intercept(1 / m_primes, risks), m_primes, risks
         return utils.robust_y_intercept(1 / m_primes, risks)
 
@@ -149,7 +149,7 @@ class RandALO(object):
 
         Parameters
         ----------
-        risk_fun : Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+        risk_fun : Callable[[torch.Tensor, torch.Tensor], float]
             The risk function to evaluate.
         n_matvecs : int, optional
             The number of Jacobian–vector products to compute for the BKS
@@ -169,7 +169,7 @@ class RandALO(object):
         )
 
         y_tilde = self._y_tilde_from_normalized_jac(normalized_diag_jac_bks)
-        return risk_fun(self._y, y_tilde).item()
+        return risk_fun(self._y, y_tilde)
 
     def evaluate_alo(
         self, risk_fun: Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
@@ -178,7 +178,7 @@ class RandALO(object):
 
         Parameters
         ----------
-        risk_fun : Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
+        risk_fun : Callable[[torch.Tensor, torch.Tensor], float]
             The risk function to evaluate.
 
         Returns
@@ -195,7 +195,7 @@ class RandALO(object):
                     torch.diag(self._normalized_jac @ torch.eye(self._y.shape[0]))
                 )
 
-        return risk_fun(self._y, self._y_tilde_exact).item()
+        return risk_fun(self._y, self._y_tilde_exact)
 
     def _y_tilde_from_normalized_jac(
         self, normalized_jac: torch.Tensor
@@ -259,7 +259,7 @@ class RandALO(object):
             * 2.0
             - 1
         )
-        return self._jac @ Omega, Omega
+        return self._normalized_jac @ Omega, Omega
 
     def _do_diag_jac_estims_upto(self, n_matvecs: int) -> None:
         """Compute more diagonal Jacobian estimates.

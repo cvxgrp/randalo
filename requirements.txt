@@ -6,5 +6,6 @@ matplotlib
 pandas
 cvxpy
 cvxpylayers
+tqdm
 git+ssh://git@github.com/cvxgrp/torch_linops.git
 -e .
