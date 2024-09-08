@@ -102,7 +102,7 @@ class Sum:
             return NotImplemented
 
 
-class Loss:
+class Loss(ABC):
     def __call__(self, y, z):
         return torch.mean(self.func(y, z))
 
