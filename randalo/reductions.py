@@ -3,50 +3,23 @@ from typing import Callable, Literal
 from dataclasses import dataclass, field
 
 import numpy as np
-import cvxpy as cp
 import linops as lo
 import torch
 
 from . import modeling_layer as ml
 from . import utils
 
-
-def regularizer_sum_to_cvxpy(obj, variable):
-    match obj:
-        case ml.Sum(terms):
-            return cp.sum([regularizer_sum_to_cvxpy(term, variable) for term in terms])
-        case ml.SquareRegularizer(_):
-            func = cp.sum_squares
-        case ml.L1Regularizer(_):
-            func = cp.norm1
-        case ml.L2Regularizer(_):
-            func = cp.norm2
-        case ml.HuberRegularizer(_):
-            func = cp.huber
-        case _:
-            raise RuntimeError("Unknown loss")
-    expr = func(obj.linear @ variable if obj.linear is not None else variable)
-    if obj.parameter is None:
-        return obj.scale * expr
-    else:
-        return obj.scale * obj.parameter.scale * obj.parameter.parameter * expr
-
-
-def loss_to_cvxpy(obj, X, y, variable):
-    match obj:
-        case ml.LogisticLoss():
-            return cp.sum(cp.logistic(-cp.multiply(y, X @ variable)))
-        case ml.MSELoss():
-            return cp.sum_squares(y - X @ variable) / np.prod(y.shape) / 2
-        case _:
-            raise RuntimeError("Unknown loss")
-
+def gen_cvxpy_jacobian(loss, regularizer, X, variable, y, inversion_method=None):
+    prob = transform_model_to_cvxpy(loss, regularizer, X, y, variable)
+    J = Jacobian(y, X, lambda: variable.value, loss, regularizer, inversion_method=None)
+    return prob, J
 
 def transform_model_to_cvxpy(loss, regularizer, X, y, variable):
+    import cvxpy as cp
     return cp.Problem(
         cp.Minimize(
-            loss_to_cvxpy(loss, X, y, variable)
-            + regularizer_sum_to_cvxpy(regularizer, variable)
+            loss.to_cvxpy(y, X @ regularizer) +
+            regularizer.to_cvxpy(variable)
         )
     )
 
@@ -105,11 +78,13 @@ class Jacobian(lo.LinearOperator):
                 Q @ (Q.T @ (rhs_scaled / sqrt_d2loss_dy_hat2))
             ) / sqrt_d2loss_dy_hat2
         elif constraints is None:
+            # TODO: double check this doesn't need additional scaling
             kkt_rhs = X_mask.T @ rhs_scaled
             if hessians is None:
                 tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
                 _, R = torch.linalg.qr(tilde_X, mode="r")
             else:
+                # TODO: double check this doesn't need additional scaling
                 hessians_mask = hessians[mask, :][:, mask]
                 P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
                 R = torch.linalg.cholesky(P, upper=True)
@@ -117,6 +92,7 @@ class Jacobian(lo.LinearOperator):
                 R, torch.linalg.solve_triangular(R.T, kkt_rhs, upper=False), upper=True
             )
         else:
+            # TODO: double check this doesn't need additional scaling
             constraints_mask = constraints[:, mask]
             n, m = constraints_mask.shape
             if n >= m:
@@ -157,81 +133,3 @@ class Jacobian(lo.LinearOperator):
         return out if not needs_squeeze else out.squeeze(-1)
 
 
-def unpack_regularizer(regularizer, mask, beta_hat, epsilon=1e-6):
-    """
-    Modifies mask in place
-
-    Returns a constraint matrix (or None) and a hessian term (or None)
-    """
-    # Refactor this to have the ml object know how to form its constraint/hessian
-    # TODO: don't modify mask in place
-    if not isinstance(regularizer, ml.Sum):
-        if regularizer.parameter is not None:
-            scale = regularizer.scale * regularizer.parameter.value
-        else:
-            scale = regularizer.scale
-
-    match regularizer:
-        case ml.Sum(exprs):
-            constraints = []
-            hessians = []
-            for reg in exprs:
-                cons, hess = unpack_regularizer(reg, mask, beta_hat)
-                if cons is not None:
-                    constraints.append(cons)
-                if hess is not None:
-                    hessians.append(hess)
-            constraints = torch.vstack(constraints) if len(constraints) > 0 else None
-            hessians = sum(hessians) if len(hessians) > 0 else None
-            return constraints, hessians
-        case ml.SquareRegularizer(linear):
-            if linear is None:
-                return None, torch.diag(
-                    2 * scale * torch.ones_like(mask, dtype=beta_hat.dtype)
-                )
-            elif isinstance(linear, list):
-                diag = torch.zeros_like(mask, dtype=beta_hat.dtype)
-                diag[linear] = scale
-                return None, torch.diag(diag)
-            else:
-                A = utils.to_tensor(linear)
-                return None, torch.diag(scale * (A.mT @ A))
-        case ml.L1Regularizer(linear):
-            if linear is None:
-                mask[torch.abs(beta_hat) <= epsilon] = False
-                return None, None
-            elif isinstance(linear, list):
-                mask[linear][torch.abs(beta_hat[linear]) <= epsilon] = False
-                return None, None
-            else:
-                A = utils.from_numpy(linear)
-                return A[torch.abs(A @ beta_hat) <= epsilon, :], None
-
-        case ml.L2Regularizer(linear):
-            if linear is None:
-                if torch.linalg.norm(beta_hat) <= epsilon:
-                    mask[:] = False
-                    return None, None
-                else:
-                    raise NotImplementedError("Hasn't been implemented yet")
-                    return None, ...
-
-            elif isinstance(linear, list):
-                if torch.linalg.norm(beta_hat[linear]) <= epsilon:
-                    mask[linear] = False
-                    return None, None
-                else:
-                    raise NotImplementedError("Hasn't been implemented yet")
-                    return None, ...
-            else:
-                if torch.linalg.norm(linear @ beta_hat) <= epsilon:
-                    return linear, None
-                else:
-                    raise NotImplementedError("Hasn't been implemented yet")
-                    return None, ...
-        case ml.HuberRegularizer(linear, scale, parameter):
-            raise NotImplementedError("TBD")
-
-
-def transform_model_to_Jacobian(solution_func, loss, regularizer):
-    return Jacobian(solution_func, loss, regularizer)
