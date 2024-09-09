@@ -29,7 +29,7 @@ class HyperParameter:
 
 
 @dataclass
-class Regularizer:
+class Regularizer(ABC):
     linear: np.ndarray | list[int] = field(default=None)
     scale: float = field(init=False, default=1.0)
     parameter: HyperParameter = field(init=False, default=None)
@@ -38,13 +38,13 @@ class Regularizer:
         if isinstance(r, HyperParameter):
             if self.parameter is not None:
                 raise TypeError("Cannot have multiple parameters")
-            out = Regularizer(linear=self.linear)
+            out = type(self)(linear=self.linear)
             out.scale = self.scale
             out.parameter= r
             return out
         # elif isinstance(r, float | np.float32): # <- didn't allow integers or other floats...
         else:
-            out = Regularizer(linear=self.linear)
+            out = type(self)(linear=self.linear)
             out.scale = self.scale * r
             out.parameter = self.parameter
             return out
@@ -80,93 +80,100 @@ class Regularizer:
             return obj.scale * obj.parameter.scale * obj.parameter.parameter * expr
 
     @abstractmethod
-    def get_constraint_hessian(self, mask, beta_hat, epsilon=1e-6):
+    def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         """
-        Returns two matrices (or None if they would be the 0 matrix) such that
+        Returns two matrices and a vector[bool] (or None if they would be the
+        0 matrix or all true) such that
         the hessian of this regularizer can be viewed as 
-            infinity * (first matrix) + (second matrix)
+            infinity * (first matrix) + (second matrix) + infty * (third matrix)
         first matrix is called the "constraint matrix" second matrix is called
         the "hessian matrix"
 
-        If some rows of the constraint matrix would be rows of the identity
-        matrix this function can instead modify mask to contain False in
-        the index corresponding to which row of the identity it is
+        The third matrix is given by
+            diag = torch.zero(n)
+            diag[mask] = 1
+            third matrix = torch.diag(diag)
+        ie any entry associated with a False in mask is held to always be zeros
         """
 
     def _scale(self):
-        if regularizer.parameter is not None:
-            scale = regularizer.scale * regularizer.parameter.value
+        if self.parameter is not None:
+            return self.scale * self.parameter.value
         else:
-            scale = regularizer.scale
+            return self.scale
 
 
 class SquareRegularizer(Regularizer):
     def to_cvxpy(self, variable):
         super().to_cvxpy(variable, cp.sum_squares)
 
-    def get_constraint_hessian(self, mask, beta_hat, epsilon=1e-6):
+    def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         scale = self._scale()
-        if linear is None:
+        mask = None
+        if self.linear is None:
             return None, torch.diag(
-                    2 * scale * torch.ones_like(mask, dtype=beta_hat.dtype))
+                    2 * scale * torch.ones_like(beta_hat, dtype=beta_hat.dtype)), mask
         elif isinstance(linear, list):
             diag = torch.zeros_like(mask, dtype=beta_hat.dtype)
             diag[linear] = scale
-            return None, torch.diag(diag)
+            return None, torch.diag(diag), mask
         else:
             A = utils.to_tensor(linear)
-            return None, torch.diag(scale * (A.mT @ A))
+            return None, torch.diag(scale * (A.mT @ A)), mask
 
 
 class L1Regularizer(Regularizer):
     def to_cvxpy(self, variable):
         super().to_cvxpy(variable, cp.norm1)
 
-    def get_constraint_hessian(self, mask, beta_hat, epsilon=1e-6):
+    def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         scale = self._scale()
-        if linear is None:
+        mask = torch.ones_like(beta_hat, dtype=bool)
+        if self.linear is None:
             mask[torch.abs(beta_hat) <= epsilon] = False
-            return None, None
+            return None, None, mask
         elif isinstance(linear, list):
             mask[linear][torch.abs(beta_hat[linear]) <= epsilon] = False
-            return None, None
+            return None, None, mask
         else:
             A = utils.from_numpy(linear)
-            return A[torch.abs(A @ beta_hat) <= epsilon, :], None
+            return A[torch.abs(A @ beta_hat) <= epsilon, :], None, None
 
 
 class L2Regularizer(Regularizer):
     def to_cvxpy(self, variable):
         super().to_cvxpy(variable, cp.norm2)
 
-    def get_constraint_hessian(self, mask, beta_hat, epsilon=1e-6):
+    def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         linear = self.linear
-        if linear is None:
+        if self.linear is None:
             norm = torch.linalg.norm(beta_hat)
             if norm <= epsilon:
-                mask[:] = False
-                return None, None
+                mask = torch.zeros_like(beta_hat, dtype=bool)
+                return None, None, mask
 
             tilde_beta_hat_2d = torch.atleast_2d(beta_hat).T / norm
-            return None, self._scale() * (torch.eye(beta_hat.shape) - beta_hat_2d @ beta_hat_2d.T)
+            hessian = self._scale() * (torch.eye(beta_hat.shape) - beta_hat_2d @ beta_hat_2d.T)
+            return None, hessian, None
         elif isinstance(linear, list):
             norm = torch.linalg.norm(beta_hat[linear])
             if norm <= epsilon:
+                mask = torch.ones_like(beta_hat, dtype=bool)
                 mask[linear] = False
-                return None, None
+                return None, None, mask
             tilde_b = torch.atleast_2d(torch.zeros_like(beta_hat)).T / norm
             tilde_b[linear] = beta_hat[linear]
             diag = torch.zero_like(beta_hat)
             diag[linear] = 1.0
-            return None, self._scale() * (torch.diag(diag) - tilde_b @ tilde_b.T)
+            return None, self._scale() * (torch.diag(diag) - tilde_b @ tilde_b.T), None
         else:
             Lb = linear @ beta_hat
             norm = torch.linalg.norm(Lb)
             tilde_Lb = torch.atleast_2d(Lb).T / norm
             if Lb <= epsilon:
-                return linear, None
+                return linear, None, None
             return None, self._scale() * linear.T @ (
-                    torch.eye(Lb.shape[0]) - Lb_2d @ Lb_2d.T) @ linear
+                    torch.eye(Lb.shape[0]) - Lb_2d @ Lb_2d.T) @ linear, None
 
 
 class HuberRegularizer(Regularizer):
@@ -196,19 +203,22 @@ class Sum:
     def to_cvxpy(self, variable):
         return cp.sum([term.to_cvxpy(variable) for term in terms])
 
-    def get_constraint_hessian(self, mask, beta_hat, epsilon=1e-6):
+    def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         constraints = []
         hessians = []
-        for reg in exprs:
-            cons, hess = reg.get_constraint_hessian(mask, beta_hat, epsilon)
+        mask = torch.ones_like(beta_hat, dtype=bool)
+        for reg in self.exprs:
+            cons, hess, m = reg.get_constraint_hessian_mask(beta_hat, epsilon)
             if cons is not None:
                 constraints.append(cons)
             if hess is not None:
                 hessians.append(hess)
+            if m is not None:
+                mask &= m
 
         constraints = torch.vstack(constraints) if len(constraints) > 0 else None
         hessians = sum(hessians) if len(hessians) > 0 else None
-        return constraints, hessians
+        return constraints, hessians, mask
  
 
 class Loss(ABC):

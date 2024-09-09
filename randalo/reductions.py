@@ -64,10 +64,12 @@ class Jacobian(lo.LinearOperator):
             self.loss, y, X @ beta_hat
         )
 
-        mask = torch.ones_like(beta_hat.squeeze(), dtype=bool)
-
-        constraints, hessians = unpack_regularizer(self.regularizer, mask, beta_hat)
-        X_mask = X[:, mask]
+        constraints, hessians, mask = \
+                self.regularizer.get_constraint_hessian_mask(beta_hat)
+        if mask is not None:
+            X_mask = X[:, mask]
+        else:
+            X_mask = X
         rhs_scaled = -d2loss_dboth[:, None] * rhs
 
         if constraints is None and hessians is None:
@@ -80,20 +82,21 @@ class Jacobian(lo.LinearOperator):
         elif constraints is None:
             # TODO: double check this doesn't need additional scaling
             kkt_rhs = X_mask.T @ rhs_scaled
-            if hessians is None:
-                tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
-                _, R = torch.linalg.qr(tilde_X, mode="r")
-            else:
-                # TODO: double check this doesn't need additional scaling
+            if mask is not None:
                 hessians_mask = hessians[mask, :][:, mask]
-                P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
-                R = torch.linalg.cholesky(P, upper=True)
+            else:
+                hessians_mask = hessians
+            P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
+            R = torch.linalg.cholesky(P, upper=True)
             v = torch.linalg.solve_triangular(
                 R, torch.linalg.solve_triangular(R.T, kkt_rhs, upper=False), upper=True
             )
         else:
             # TODO: double check this doesn't need additional scaling
-            constraints_mask = constraints[:, mask]
+            if mask is not None:
+                constraints_mask = constraints[:, mask]
+            else:
+                constraints_mask = constraints
             n, m = constraints_mask.shape
             if n >= m:
                 _, N = torch.linalg.qr(constraints_mask, mode="r")
@@ -104,7 +107,10 @@ class Jacobian(lo.LinearOperator):
                 tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
                 _, P_R = torch.linalg.qr(tilde_X, mode="r")
             else:
-                hessians_mask = hessians[mask, :][:, mask]
+                if mask is not None:
+                    hessians_mask = hessians[mask, :][:, mask]
+                else:
+                    hessian_mask = hessians
                 P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
                 P_R = torch.linalg.cholesky(P, upper=True)
 
@@ -131,5 +137,3 @@ class Jacobian(lo.LinearOperator):
             )
         out = X_mask @ v
         return out if not needs_squeeze else out.squeeze(-1)
-
-
