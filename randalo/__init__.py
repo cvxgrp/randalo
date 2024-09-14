@@ -1,9 +1,9 @@
-import importlib.util
-
-from .randalo import RandALO
-
-from randalo.modeling_layer import SquareRegularizer, L1Regularizer, LogisticLoss, MSELoss
+from . import modeling_layer
 from . import randalo
+from . import reductions
 from . import truncnorm
 from . import utils
-from randalo.reductions import gen_cvxpy_jacobian
+
+from .randalo import RandALO
+from .modeling_layer import SquareRegularizer, L1Regularizer, LogisticLoss, MSELoss
+from .reductions import Jacobian, gen_cvxpy_jacobian
