@@ -109,17 +109,18 @@ class SquareRegularizer(Regularizer):
 
     def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         scale = self._scale()
-        mask = None
+        if scale == 0.0:
+            return None, None, None
         if self.linear is None:
             return None, torch.diag(
-                    2 * scale * torch.ones_like(beta_hat, dtype=beta_hat.dtype)), mask
+                    2 * scale * torch.ones_like(beta_hat, dtype=beta_hat.dtype)), None
         elif isinstance(linear, list):
-            diag = torch.zeros_like(mask, dtype=beta_hat.dtype)
+            diag = torch.zeros_like(beta_hat)
             diag[linear] = scale
-            return None, torch.diag(diag), mask
+            return None, torch.diag(diag), None
         else:
             A = utils.to_tensor(linear)
-            return None, torch.diag(scale * (A.mT @ A)), mask
+            return None, torch.diag(scale * (A.mT @ A)), None
 
 
 class L1Regularizer(Regularizer):
@@ -166,6 +167,7 @@ class L2Regularizer(Regularizer):
             diag = torch.zero_like(beta_hat)
             diag[linear] = 1.0
             return None, self._scale() * (torch.diag(diag) - tilde_b @ tilde_b.T), None
+
         else:
             Lb = linear @ beta_hat
             norm = torch.linalg.norm(Lb)

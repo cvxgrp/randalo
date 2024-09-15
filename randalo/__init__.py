@@ -5,5 +5,5 @@ from . import truncnorm
 from . import utils
 
 from .randalo import RandALO
-from .modeling_layer import SquareRegularizer, L1Regularizer, LogisticLoss, MSELoss
+from .modeling_layer import HyperParameter, Regularizer, SquareRegularizer, L1Regularizer, L2Regularizer, Loss, LogisticLoss, MSELoss
 from .reductions import Jacobian, gen_cvxpy_jacobian
