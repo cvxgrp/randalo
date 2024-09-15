@@ -1013,9 +1013,9 @@ def comp_all():
         "categorical_comp",
     ]
     titles = [
-        "Logistic",
-        "Multivariate $t$",
-        "Categorical",
+        "Logistic, Gaussian",
+        "Lasso, multivariate $t$",
+        "Lasso, categorical",
     ]
 
     # fig, axes = plt.subplots(1, 2 * len(comps), figsize=(6.5, 3), dpi=300)
@@ -1631,11 +1631,11 @@ def bks_viz():
         color=color_cycle[1],
     )
     ax.legend()
-    ax.set_title("Empirical distribution of $\\mu_i$")
+    ax.set_title("Empirical distribution of $\\mu_i$'s")
 
     ax = axes[1]
 
-    z_scores = (D[:, :, :] - bks_means[:, None, None]) / bks_stds[:, None, None]
+    z_scores = (D[:, :1, :] - bks_means[:, None, None]) / bks_stds[:, None, None]
     z_scores_marginal = z_scores.ravel()
 
     zs = np.linspace(-3.5, 3.5, 100)
