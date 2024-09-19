@@ -2,7 +2,9 @@
 
 This repository contains a software package implementing RandALO, a fast randomized method for risk estimation of machine learning models, as described in the paper,
 
-P. T. Nobel, D. LeJeune, E. J. Candès. RandALO: Out-of-sample risk estimation in no time flat. 2024.
+P. T. Nobel, D. LeJeune, E. J. Candès. RandALO: Out-of-sample risk estimation in no time flat. 2024. [arXiv:2409.09781](https://arxiv.org/abs/2409.09781).
+
+Note: the experiments in the paper were performed in an earlier version of the codebase available in the [`paper-code`](https://github.com/cvxgrp/randalo/tree/paper-code) branch.
 
 ## Installation
 
