@@ -96,6 +96,11 @@ class Regularizer(ABC):
         ie any entry associated with a False in mask is held to always be zeros
         """
 
+    def get_constraint_hessian_mask_sparse(self, beta_hat, mask, epsilon=1e-6):
+        beta = torch.zeros(mask.shape, device=beta_hat.device, dtype=beta_hat.dtype)
+        beta[mask] = beta_hat
+        return self.get_constraint_hessian_mask(beta, epsilon)
+
     def _scale(self):
         if self.parameter is not None:
             return self.scale * self.parameter.value
@@ -108,14 +113,20 @@ class SquareRegularizer(Regularizer):
         super().to_cvxpy(variable, cp.sum_squares)
 
     def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
-        scale = self._scale()
+        return self._internal(beta_hat.shape, beta_hat.dtype, beta_hat.device, epsilon)
+
+    def get_constraint_hessian_mask_sparse(self, beta_hat, mask, epsilon=1e-6):
+        return self._internal(mask.shape, beta_hat.dtype, beta_hat.device, epsilon)
+
+    def _internal(self, shape, dtype, device, epsilon):
+        scale = 2 * self._scale()
         if scale == 0.0:
             return None, None, None
         if self.linear is None:
             return None, torch.diag(
-                    2 * scale * torch.ones_like(beta_hat, dtype=beta_hat.dtype)), None
+                    scale * torch.ones(shape, dtype=dtype, device=device)), None
         elif isinstance(linear, list):
-            diag = torch.zeros_like(beta_hat)
+            diag = torch.zeros(shape, dtype=dtype, device=device)
             diag[linear] = scale
             return None, torch.diag(diag), None
         else:
@@ -128,7 +139,6 @@ class L1Regularizer(Regularizer):
         super().to_cvxpy(variable, cp.norm1)
 
     def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
-        scale = self._scale()
         mask = torch.ones_like(beta_hat, dtype=bool)
         if self.linear is None:
             mask[torch.abs(beta_hat) <= epsilon] = False
@@ -139,6 +149,18 @@ class L1Regularizer(Regularizer):
         else:
             A = utils.from_numpy(linear)
             return A[torch.abs(A @ beta_hat) <= epsilon, :], None, None
+
+    def get_constraint_hessian_mask_sparse(self, beta_hat, mask, epsilon=1e-6):
+        mask_0 = torch.ones_like(beta_hat, dtype=bool)
+        if self.linear is None:
+            mask_0[torch.abs(beta_hat) <= epsilon] = False
+            return None, None, mask_0
+        elif isinstance(linear, list):
+            idx = torch.cumsum(mask)[linear]
+            mask_0[idx][torch.abs(beta_hat[idx]) <= epsilon] = False
+            return None, None, mask_0
+        else:
+            return super().get_constraint_hessian_mask_sparse(beta_hat, mask, epsilon)
 
 
 class L2Regularizer(Regularizer):
@@ -222,6 +244,23 @@ class Sum:
         hessians = sum(hessians) if len(hessians) > 0 else None
         return constraints, hessians, mask
  
+    def get_constraint_hessian_mask_sparse(self, beta_hat, mask_1, epsilon=1e-6):
+        constraints = []
+        hessians = []
+        mask = torch.ones_like(beta_hat, dtype=bool)
+        for reg in self.exprs:
+            cons, hess, m = reg.get_constraint_hessian_mask_sparse(beta_hat, mask_1, epsilon)
+            if cons is not None:
+                constraints.append(cons)
+            if hess is not None:
+                hessians.append(hess)
+            if m is not None:
+                mask &= m
+
+        constraints = torch.vstack(constraints) if len(constraints) > 0 else None
+        hessians = sum(hessians) if len(hessians) > 0 else None
+        return constraints, hessians, mask
+
 
 class Loss(ABC):
     def __call__(self, y, z):

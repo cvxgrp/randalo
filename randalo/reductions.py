@@ -25,7 +25,7 @@ def transform_model_to_cvxpy(loss, regularizer, X, y, variable):
 
 
 class Jacobian(lo.LinearOperator):
-    solution_func: Callable[[], torch.Tensor]
+    solution_func: Callable[[], torch.Tensor] | Callable[[], tuple[torch.Tensor, torch.Tensor]]
     loss: ml.Loss
     regularizer: ml.Sum | ml.Regularizer
     inverse_method: Literal[None, "minres", "cholesky"]
@@ -52,24 +52,37 @@ class Jacobian(lo.LinearOperator):
         return torch.diag(self @ torch.eye(self.shape[1]))
 
     def _matmul_impl(self, rhs):
+        y = self.y
+        X = self.X
+
         rhs = utils.to_tensor(rhs)
         needs_squeeze = False
         if len(rhs.shape) == 1:
             rhs = rhs.unsqueeze(-1)
             needs_squeeze = True
-        beta_hat = utils.to_tensor(self.solution_func())
-        y = self.y
-        X = self.X
-        _, _, _, d2loss_dboth, d2loss_dy_hat2 = utils.compute_derivatives(
-            self.loss, y, X @ beta_hat
-        )
 
-        constraints, hessians, mask = \
-                self.regularizer.get_constraint_hessian_mask(beta_hat)
+        solution = self.solution_func()
+        if isinstance(solution, tuple):
+            beta_hat, mask_0 = solution
+            X = X[:, mask_0]
+            constraints, hessians, mask = \
+                    self.regularizer.get_constraint_hessian_mask_sparse(
+                            beta_hat, mask_0)
+        else:
+            beta_hat = utils.to_tensor(solution)
+
+            constraints, hessians, mask = \
+                    self.regularizer.get_constraint_hessian_mask(beta_hat)
+
         if mask is not None:
             X_mask = X[:, mask]
         else:
             X_mask = X
+
+        _, _, _, d2loss_dboth, d2loss_dy_hat2 = utils.compute_derivatives(
+            self.loss, y, X @ beta_hat
+        )
+
         rhs_scaled = -d2loss_dboth[:, None] * rhs
 
         if constraints is None and hessians is None:
