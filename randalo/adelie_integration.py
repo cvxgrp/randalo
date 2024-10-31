@@ -13,26 +13,27 @@ class AdelieState:
 
     def set_index(self, idx):
         self.index = idx
-        self.ra_lmda.value = self.state.lmda[idx]
+        self.ra_lmda.value = self.state.lmda_path[idx]
 
 
-def adelie_state_to_Jacobian(state, adelie_state):
+def adelie_state_to_jacobian(y, state, adelie_state):
     n, p = state.X.shape
     G, = state.groups.shape
     L, = state.lmda_path.shape
 
     assert p == G, "Group lasso with adelie is not supported."
-    assert state.penalty == None
 
-    assert state.offsets == None
-    assert state.intercept == None
+    assert not state.intercept
     ell_1_term = state.alpha * ra.L1Regularizer()
     ell_2_2_term = (1 - state.alpha) / 2 * ra.SquareRegularizer()
     reg = adelie_state.ra_lmda * (ell_1_term + ell_2_2_term)
 
     loss = ra.MSELoss()
-
-    J = ra.Jacobian(lambda: (
+    breakpoint()
+    J = ra.Jacobian(
+        y,
+        state.X,
+        lambda: (
         betas[adelie_state.index], # What is the type of this?
         screen_set[active_set[active_sizes[:adelie_state.index]]]),
         loss,
@@ -41,27 +42,27 @@ def adelie_state_to_Jacobian(state, adelie_state):
 
     return loss, J
 
-def adelie_state_to_randalo(state, adelie_state, loss, J, index, rng):
+def adelie_state_to_randalo(y, state, adelie_state, loss, J, index, rng):
     y_hat = state.X @ state.beta[index]
     adelie_state.set_index(index)
     randalo = ra.RandALO(
             loss,
             J,
-            state.y,
+            y,
             y_hat,
             rng=rng)
 
     return randalo
 
-def get_alo_for_sweep(state, risk_fun):
-    L, = state.lmda.shape
+def get_alo_for_sweep(y, state, risk_fun):
+    L, = state.lmda_path.shape
     adelie_state = AdelieState(state)
-    loss, J = adelie_state_to_jacobian(state, adelie_state)
+    loss, J = adelie_state_to_jacobian(y, state, adelie_state)
 
     output = np.empty(L)
 
     for i in range(L):
-        randalo = adelie_state_to_randalo(state, adelie_state, loss, J, i)
+        randalo = adelie_state_to_randalo(y, state, adelie_state, loss, J, i)
         output[i] = randalo.evaluate(risk_fun)
 
     return output
