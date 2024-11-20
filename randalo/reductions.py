@@ -2,8 +2,10 @@ import functools
 from typing import Callable, Literal
 from dataclasses import dataclass, field
 
+import scipy
 import numpy as np
 import linops as lo
+from linops.minres import minres
 import torch
 
 from . import modeling_layer as ml
@@ -38,7 +40,7 @@ class Jacobian(lo.LinearOperator):
         self.regularizer = regularizer
         self.inverse_method = inverse_method
         self.y = utils.to_tensor(y)
-        self.X = utils.to_tensor(X)
+        self.X = lo.aslinearoperator(X)
 
     @property
     def _shape(self):
@@ -62,8 +64,11 @@ class Jacobian(lo.LinearOperator):
             needs_squeeze = True
 
         solution = self.solution_func()
-        if isinstance(solution, tuple):
-            beta_hat, mask_0 = solution
+        if isinstance(solution, scipy.sparse.csr_matrix):
+            beta_hat = utils.to_tensor(solution.data)
+            mask_0 = utils.to_tensor(solution.indices)
+            if solution.data.shape == (0,):
+                return torch.zeros_like(rhs).squeeze() if needs_squeeze else torch.zeros_like(rhs)
             X = X[:, mask_0]
             constraints, hessians, mask = \
                     self.regularizer.get_constraint_hessian_mask_sparse(
@@ -85,7 +90,18 @@ class Jacobian(lo.LinearOperator):
 
         rhs_scaled = -d2loss_dboth[:, None] * rhs
 
-        if constraints is None and hessians is None:
+        # TODO: Split cholesky/minres code paths into seperate ones
+        if self.inverse_method == 'minres':
+            if constraints is None and hessians is None:
+                sqrt_d2loss_dy_hat2 = torch.sqrt(d2loss_dy_hat2)[:, None]
+                tilde_X = sqrt_d2loss_dy_hat2 * X_mask
+                return ((
+                    X @ minres(X.T @ X, (X.T @ (rhs_scaled / sqrt_d2loss_dy_hat2)))
+                ) / sqrt_d2loss_dy_hat2).to(rhs.dtype)
+            else:
+                raise NotImplementedError()
+
+        elif constraints is None and hessians is None:
             sqrt_d2loss_dy_hat2 = torch.sqrt(d2loss_dy_hat2)[:, None]
             tilde_X = sqrt_d2loss_dy_hat2 * X_mask
             Q, _ = torch.linalg.qr(tilde_X)

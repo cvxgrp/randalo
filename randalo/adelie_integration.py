@@ -1,7 +1,30 @@
 import adelie
-import randalo as ra
-import numpy as np
 from dataclasses import dataclass
+import linops as lo
+import numpy as np
+import torch
+
+import randalo as ra
+
+class AdelieOperator(lo.LinearOperator):
+    supports_operator_matrix = True
+
+    def __init__(self, X, adjoint=None, shape=None):
+        if shape is not None:
+            self._shape = shape
+        else:
+            m, n = X.shape
+            self._shape = (m, n)
+        self.X = X
+        self._adjoint = adjoint if adjoint is not None else AdelieOperator(X.T, self, (n, m))
+
+    def _matmul_impl(self, v):
+        return torch.from_numpy(self.X @ v.numpy())
+
+    def __getitem__(self, key):
+        if isinstance(key, tuple):
+            key = tuple(k.numpy() if isinstance(k, torch.Tensor) else k  for k in key)
+        return AdelieOperator(self.X[key])
 
 def curry(f, *args0, **kwargs0):
     return lambda *args, **kwargs: f(*args0, *args, **kwargs0, **kwargs)
@@ -29,21 +52,19 @@ def adelie_state_to_jacobian(y, state, adelie_state):
     reg = adelie_state.ra_lmda * (ell_1_term + ell_2_2_term)
 
     loss = ra.MSELoss()
-    breakpoint()
     J = ra.Jacobian(
         y,
-        state.X,
-        lambda: (
-        betas[adelie_state.index], # What is the type of this?
-        screen_set[active_set[active_sizes[:adelie_state.index]]]),
+        AdelieOperator(state.X),
+        lambda: state.betas[adelie_state.index],
         loss,
         reg,
+        'minres'
     )
 
     return loss, J
 
-def adelie_state_to_randalo(y, state, adelie_state, loss, J, index, rng):
-    y_hat = state.X @ state.beta[index]
+def adelie_state_to_randalo(y, state, adelie_state, loss, J, index, rng=None):
+    y_hat = (state.X @ state.betas[index].T).squeeze()
     adelie_state.set_index(index)
     randalo = ra.RandALO(
             loss,
@@ -55,7 +76,7 @@ def adelie_state_to_randalo(y, state, adelie_state, loss, J, index, rng):
     return randalo
 
 def get_alo_for_sweep(y, state, risk_fun):
-    L, = state.lmda_path.shape
+    L, _ = state.betas.shape
     adelie_state = AdelieState(state)
     loss, J = adelie_state_to_jacobian(y, state, adelie_state)
 
@@ -65,5 +86,5 @@ def get_alo_for_sweep(y, state, risk_fun):
         randalo = adelie_state_to_randalo(y, state, adelie_state, loss, J, i)
         output[i] = randalo.evaluate(risk_fun)
 
-    return output
+    return state.lmda_path[:L], output
 
