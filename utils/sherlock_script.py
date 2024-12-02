@@ -9,9 +9,9 @@ import sys
 if len(sys.argv) != 2:
     raise RuntimeError()
 
-data_dir = "/oak/group/candes/for_parth"
+data_dir = "/oak/stanford/groups/candes/for_parth"
 cache_dir = "/scratch/candes/for_parth"
-df = pd.read_csv(os.path.join(data_dir, "master_phe.csv"), sep="\t", index_col=0)
+df = pd.read_csv(os.path.join(data_dir, "phenotypes.QC.britishonly.csv"), sep="\t", index_col=0)
 covars_dense = df.iloc[:, :-1].to_numpy()
 y = df.iloc[:, -1].to_numpy()
 

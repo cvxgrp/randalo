@@ -5,10 +5,10 @@ import os
 import pandas as pd
 import pgenlib as pg
 
-data_dir = "/oak/group/candes/for_parth"
-bedname = os.path.join(data_dir, "EUR_subset.bed")
-bimname = os.path.join(data_dir, "EUR_subset.bim")
-famname = os.path.join(data_dir, "EUR_subset.fam")
+data_dir = "/oak/stanford/groups/candes/for_parth"
+bedname = os.path.join(data_dir, "ukb_gen_british.bed")
+bimname = os.path.join(data_dir, "ukb_gen_british.bim")
+famname = os.path.join(data_dir, "ukb_gen_british.fam")
 
 df_fam = pd.read_csv(
     famname,
