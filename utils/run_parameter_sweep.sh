@@ -6,14 +6,14 @@
 #SBATCH --mem-per-cpu=16GB
 #SBATCH --partition=candes
 
-BASE_DIR=$HOME/alo/benchmarking/lasso_sweep
+BASE_DIR=$HOME/adelie_alo/benchmarking/lasso_sweep
 RESULTS_DIR=$BASE_DIR/results
 mkdir -p $RESULTS_DIR
 DEST_FILE=$RESULTS_DIR/sweep.npz
 
 
-ml python/3.9.0
-ml py-pytorch/2.0.0_py39
+ml python/3.12.1
+ml py-pytorch/2.4.1_py312
 . $HOME/randalo/.venv/bin/activate
 
 
