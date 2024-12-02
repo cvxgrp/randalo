@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import pgenlib as pg
 
-data_dir = "../../adelie/data"
+data_dir = "/oak/group/candes/for_parth"
 bedname = os.path.join(data_dir, "EUR_subset.bed")
 bimname = os.path.join(data_dir, "EUR_subset.bim")
 famname = os.path.join(data_dir, "EUR_subset.fam")
@@ -44,7 +44,7 @@ reader.read_list(variant_idxs, geno_out_chr)
 geno_out_chr = np.asfortranarray(geno_out_chr.T)
 
 # define cache directory and snpdat filename
-cache_dir = "/tmp"
+cache_dir = "/scratch/candes/for_parth/tmp"
 
 chromosomes = df_bim["chr"].unique()
 
