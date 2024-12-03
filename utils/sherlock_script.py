@@ -12,7 +12,8 @@ if len(sys.argv) != 2:
 data_dir = "/oak/stanford/groups/candes/for_parth"
 cache_dir = "/scratch/groups/candes/parth"
 df = pd.read_csv(os.path.join(data_dir, "phenotypes.QC.britishonly.csv"), index_col=0)
-covars_dense = df.loc[:, df.columns != 'height'].to_numpy()
+df = df.drop('ethnicity', axis=1)
+covars_dense = df.drop('height', axis=1).to_numpy()
 y = df['height'].to_numpy()
 
 chromosomes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
