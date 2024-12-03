@@ -10,7 +10,7 @@ if len(sys.argv) != 2:
     raise RuntimeError()
 
 data_dir = "/oak/stanford/groups/candes/for_parth"
-cache_dir = "/scratch/candes/for_parth"
+cache_dir = "/scratch/groups/candes/parth"
 df = pd.read_csv(os.path.join(data_dir, "phenotypes.QC.britishonly.csv"), index_col=0)
 covars_dense = df.loc[:, df.columns != 'height'].to_numpy()
 y = df['height'].to_numpy()

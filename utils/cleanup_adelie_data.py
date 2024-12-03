@@ -44,7 +44,7 @@ reader.read_list(variant_idxs, geno_out_chr)
 geno_out_chr = np.asfortranarray(geno_out_chr.T)
 
 # define cache directory and snpdat filename
-cache_dir = "/scratch/candes/for_parth/tmp"
+cache_dir = "/scratch/groups/candes/parth"
 
 chromosomes = df_bim["chr"].unique()
 
