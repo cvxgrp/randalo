@@ -2,8 +2,8 @@
 #SBATCH --job-name=adelie_sweep
 #SBATCH --output=adelie_sweep/output/slurm-%A_%a.out
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=64GB
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=512GB
 #SBATCH --partition=candes
 
 BASE_DIR=$HOME/adelie_alo/benchmarking/lasso_sweep

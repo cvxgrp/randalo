@@ -30,7 +30,6 @@ print(X.shape)
 state = ad.grpnet(
     X=X,
     glm=ad.glm.gaussian(y),
-    intercept=False,
 )
 
 import randalo as ra
