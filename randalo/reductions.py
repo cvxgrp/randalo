@@ -42,6 +42,8 @@ class Jacobian(lo.LinearOperator):
         self.y = utils.to_tensor(y)
         self.X = lo.aslinearoperator(X)
 
+        self._adjoint = self  # Not actually symmetric
+
     @property
     def _shape(self):
         n = self.y.shape[0]
@@ -66,13 +68,13 @@ class Jacobian(lo.LinearOperator):
         solution = self.solution_func()
         if isinstance(solution, scipy.sparse.csr_matrix):
             beta_hat = utils.to_tensor(solution.data)
-            mask_0 = utils.to_tensor(solution.indices)
+            mask_0 = utils.to_tensor(solution.indices, dtype=torch.int)
             if solution.data.shape == (0,):
                 return torch.zeros_like(rhs).squeeze() if needs_squeeze else torch.zeros_like(rhs)
             X = X[:, mask_0]
             constraints, hessians, mask = \
                     self.regularizer.get_constraint_hessian_mask_sparse(
-                            beta_hat, mask_0)
+                            beta_hat, mask_0, X.shape[1])
         else:
             beta_hat = utils.to_tensor(solution)
 

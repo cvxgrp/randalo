@@ -1,7 +1,8 @@
-import adelie
+import adelie as ad
 from dataclasses import dataclass
 import linops as lo
 import numpy as np
+import scipy.sparse as sp
 import torch
 
 import randalo as ra
@@ -9,14 +10,19 @@ import randalo as ra
 class AdelieOperator(lo.LinearOperator):
     supports_operator_matrix = True
 
-    def __init__(self, X, adjoint=None, shape=None):
+    def __init__(self, X, intercept=False, adjoint=None, shape=None):
+        if intercept:
+            X = ad.matrix.concatenate([X, np.ones(X.shape[0])], axis=1)
+
         if shape is not None:
             self._shape = shape
         else:
             m, n = X.shape
             self._shape = (m, n)
+
         self.X = X
-        self._adjoint = adjoint if adjoint is not None else AdelieOperator(X.T, self, (n, m))
+        self._adjoint = adjoint if adjoint is not None else \
+                AdelieOperator(X.T, False, self, (n, m))
 
     def _matmul_impl(self, v):
         return torch.from_numpy(self.X @ v.numpy())
@@ -46,16 +52,22 @@ def adelie_state_to_jacobian(y, state, adelie_state):
 
     assert p == G, "Group lasso with adelie is not supported."
 
-    assert not state.intercept
-    ell_1_term = state.alpha * ra.L1Regularizer()
-    ell_2_2_term = (1 - state.alpha) / 2 * ra.SquareRegularizer()
-    reg = adelie_state.ra_lmda * (ell_1_term + ell_2_2_term)
+    if not state.intercept:
+        ell_1_term = state.alpha * ra.L1Regularizer()
+        ell_2_2_term = (1 - state.alpha) / 2 * ra.SquareRegularizer()
+        reg = adelie_state.ra_lmda * (ell_1_term + ell_2_2_term)
+    else:
+        ell_1_term = state.alpha * ra.L1Regularizer(slice(None, -1))
+        ell_2_2_term = (1 - state.alpha) / 2 * ra.SquareRegularizer(slice(None, -1))
+        reg = adelie_state.ra_lmda * (ell_1_term + ell_2_2_term)
 
     loss = ra.MSELoss()
     J = ra.Jacobian(
         y,
-        AdelieOperator(state.X),
-        lambda: state.betas[adelie_state.index],
+        AdelieOperator(state.X, state.intercept),
+        lambda: sp.hstack((state.betas[adelie_state.index], sp.csr_matrix(np.array([[
+            state.intercepts[adelie_state.index]
+        ]])))),
         loss,
         reg,
         'minres'
