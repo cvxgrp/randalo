@@ -1,6 +1,7 @@
 import adelie as ad
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 import os
 import pandas as pd
 import pgenlib as pg
@@ -47,12 +48,13 @@ y_train = y[train_mask]
 X_test = X[test_mask]
 y_test = y[test_mask]
 
-
+t0 = time.monotonic()
 state = ad.grpnet(
     X=X_train,
     glm=ad.glm.gaussian(y_train),
-    intercept=False,
 )
+tf = time.monotonic()
+print(f"{tf-t0} seconds for solve")
 
 
 loss = torch.nn.MSELoss()
@@ -65,6 +67,6 @@ for i in range(L):
     oos[i] = loss(torch.from_numpy(y_hat_test[:, i]), torch.from_numpy(y_test))
     ins[i] = loss(torch.from_numpy(y_hat_train[:, i]), torch.from_numpy(y_train))
 
-ld, alo = ai.get_alo_for_sweep(y_train, state, loss)
+ld, alo, ts = ai.get_alo_for_sweep(y_train, state, loss)
 
-np.savez(sys.argv[-1], lamda=ld, alo=alo, oos=oos, in_sample=ins)
+np.savez(sys.argv[-1], lamda=ld, alo=alo, oos=oos, in_sample=ins, ts=ts)

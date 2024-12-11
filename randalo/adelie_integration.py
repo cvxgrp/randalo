@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import linops as lo
 import numpy as np
 import scipy.sparse as sp
+import time
 import torch
 
 import randalo as ra
@@ -93,10 +94,13 @@ def get_alo_for_sweep(y, state, risk_fun):
     loss, J = adelie_state_to_jacobian(y, state, adelie_state)
 
     output = np.empty(L)
+    times = np.empty(L)
 
     for i in range(L):
+        t0 = time.monotonic()
         randalo = adelie_state_to_randalo(y, state, adelie_state, loss, J, i)
         output[i] = randalo.evaluate(risk_fun)
+        times[i] = time.monotonic() - t0
 
-    return state.lmda_path[:L], output
+    return state.lmda_path[:L], output, times
 
