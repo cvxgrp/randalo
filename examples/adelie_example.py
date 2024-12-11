@@ -36,7 +36,7 @@ import randalo as ra
 import randalo.adelie_integration as ai
 import torch
 
-ld, alo = ai.get_alo_for_sweep(y, state, torch.nn.MSELoss())
+ld, alo, ts, r2 = ai.get_alo_for_sweep(y, state, torch.nn.MSELoss())
 dg = ad.diagnostic.diagnostic(state)
 dg.plot_devs()
 plt.plot(-np.log(ld), alo)

@@ -76,8 +76,7 @@ def adelie_state_to_jacobian(y, state, adelie_state):
 
     return loss, J
 
-def adelie_state_to_randalo(y, state, adelie_state, loss, J, index, rng=None):
-    y_hat = (state.X @ state.betas[index].T).squeeze()
+def adelie_state_to_randalo(y, y_hat, state, adelie_state, loss, J, index, rng=None):
     adelie_state.set_index(index)
     randalo = ra.RandALO(
             loss,
@@ -92,15 +91,18 @@ def get_alo_for_sweep(y, state, risk_fun):
     L, _ = state.betas.shape
     adelie_state = AdelieState(state)
     loss, J = adelie_state_to_jacobian(y, state, adelie_state)
+    y_hat = ad.diagnostic.predict(state.X, state.betas, state.intercepts)
 
     output = np.empty(L)
     times = np.empty(L)
+    r2 = np.empty(L)
 
     for i in range(L):
         t0 = time.monotonic()
-        randalo = adelie_state_to_randalo(y, state, adelie_state, loss, J, i)
+        randalo = adelie_state_to_randalo(y, y_hat[i], state, adelie_state, loss, J, i)
         output[i] = randalo.evaluate(risk_fun)
         times[i] = time.monotonic() - t0
+        r2[i] = 1 - np.square(y - y_hat[i]).sum() / np.square(y - np.mean(y)).sum()
 
-    return state.lmda_path[:L], output, times
+    return state.lmda_path[:L], output, times, r2
 
