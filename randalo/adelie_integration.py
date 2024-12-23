@@ -5,6 +5,7 @@ import numpy as np
 import scipy.sparse as sp
 import time
 import torch
+from tqdm import tqdm
 
 import randalo as ra
 
@@ -98,7 +99,7 @@ def get_alo_for_sweep(y, state, risk_fun, step=1):
     times = np.empty_like(lmda)
     r2 = np.empty_like(lmda)
 
-    for out_i, i in enumerate(range(0, L, step)):
+    for out_i, i in tqdm(enumerate(range(0, L, step))):
         t0 = time.monotonic()
         randalo = adelie_state_to_randalo(y, y_hat[i], state, adelie_state, loss, J, i)
         output[out_i] = randalo.evaluate(risk_fun)
