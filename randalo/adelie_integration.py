@@ -14,7 +14,7 @@ class AdelieOperator(lo.LinearOperator):
 
     def __init__(self, X, intercept=False, adjoint=None, shape=None):
         if intercept:
-            X = ad.matrix.concatenate([X, np.ones(X.shape[0])], axis=1)
+            X = ad.matrix.concatenate([X, np.ones(X.shape[0])], axis=1, n_threads=32)
 
         if shape is not None:
             self._shape = shape
@@ -34,6 +34,40 @@ class AdelieOperator(lo.LinearOperator):
             key = tuple(k.numpy() if isinstance(k, torch.Tensor) else k  for k in key)
         return AdelieOperator(self.X[key])
 
+class AdelieJacobian(lo.LinearOperator):
+    supports_operator_matrix = True
+    def __init__(self, X, indices, intercept, dtype):
+
+        if intercept:
+            X = ad.matrix.concatenate([X, np.ones(X.shape[0], dtype=dtype)], axis=1, n_threads=32)
+        n, p = X.shape
+        self._shape = (n, n)
+        self.X = X
+ 
+        self.indices = indices
+        if np.size(indices) > 0:
+            self.X_S = X[:, indices]
+            self._is_zero = False
+        else:
+            self._is_zero = True
+        self._adjoint = self
+
+    def _matmul_impl(self, v):
+        if self._is_zero:
+            return torch.zeros_like(v)
+        S = self.X_S.shape[-1]
+        state = ad.grpnet(
+                self.X_S,
+                ad.glm.multigaussian(v.numpy(), dtype=np.float32),
+                penalty=np.zeros(S),
+                lmda_path=[0], progress_bar=False, n_threads=32, intercept=False)
+        B = np.array(
+            state.betas.toarray()[0].reshape((S, -1), order='C'),
+            dtype=np.float32)
+        return torch.from_numpy(self.X_S @ B)
+
+
+
 def curry(f, *args0, **kwargs0):
     return lambda *args, **kwargs: f(*args0, *args, **kwargs0, **kwargs)
 
@@ -45,7 +79,6 @@ class AdelieState:
     def set_index(self, idx):
         self.index = idx
         self.ra_lmda.value = self.state.lmda_path[idx]
-
 
 def adelie_state_to_jacobian(y, state, adelie_state):
     n, p = state.X.shape
@@ -87,6 +120,30 @@ def adelie_state_to_randalo(y, y_hat, state, adelie_state, loss, J, index, rng=N
             rng=rng)
 
     return randalo
+
+def get_alo_for_sweep_v2(y, state, risk_fun, step=1):
+    L, _ = state.betas.shape
+    adelie_state = AdelieState(state)
+    loss = ra.MSELoss()
+    #loss, J = adelie_state_to_jacobian(y, state, adelie_state)
+    y_hat = ad.diagnostic.predict(state.X, state.betas, state.intercepts)
+
+    lmda = state.lmda_path[:L:step]
+    output = np.empty_like(lmda)
+    times = np.empty_like(lmda)
+    r2 = np.empty_like(lmda)
+
+    for out_i, i in tqdm(enumerate(range(0, L, step))):
+        t0 = time.monotonic()
+        indices = state.betas[i].indices
+
+        J = AdelieJacobian(state.X, indices, state.intercept, y.dtype)
+        randalo = adelie_state_to_randalo(y, y_hat[i], state, adelie_state, loss, J, i)
+        output[out_i] = randalo.evaluate(risk_fun)
+        times[out_i] = time.monotonic() - t0
+        r2[out_i] = 1 - np.square(y - y_hat[i]).sum() / np.square(y - np.mean(y)).sum()
+
+    return state.lmda_path[:L:step], output, times, r2
 
 def get_alo_for_sweep(y, state, risk_fun, step=1):
     L, _ = state.betas.shape

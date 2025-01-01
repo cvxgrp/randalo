@@ -24,7 +24,7 @@ cache_dir = "/scratch/groups/candes/parth"
 df = pd.read_csv(os.path.join(data_dir, "phenotypes.QC.britishonly.csv"), index_col=0)
 df = df.drop('ethnicity', axis=1)
 covars_dense = df[['age', 'sex'] + [f'PC{i}' for i in range(1, 11)]]
-y = df['height'].to_numpy()
+y = np.array(df['height'].to_numpy(), dtype=np.float32)
 
 chromosomes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
@@ -35,7 +35,7 @@ X = ad.matrix.concatenate(
             ad.matrix.snp_unphased(
                 ad.io.snp_unphased(
                     os.path.join(cache_dir, f"EUR_subset_chr{chr}.snpdat"),
-                ), n_threads=32
+                ), n_threads=32, dtype=np.float32,
             )
             for chr in chromosomes],
         axis=1,
