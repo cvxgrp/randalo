@@ -35,7 +35,8 @@ class AdelieOperator(lo.LinearOperator):
         return AdelieOperator(self.X[key])
 
 class AdelieJacobian(lo.LinearOperator):
-    supports_operator_matrix = True
+    supports_operator_matrix = False
+
     def __init__(self, X, indices, intercept, dtype):
 
         if intercept:
@@ -58,13 +59,14 @@ class AdelieJacobian(lo.LinearOperator):
         S = self.X_S.shape[-1]
         state = ad.grpnet(
                 self.X_S,
-                ad.glm.multigaussian(v.numpy(), dtype=np.float32),
+                ad.glm.gaussian(v.numpy(), dtype=np.float64),
+                #ad.glm.multigaussian(v.numpy(), dtype=np.float64),
                 penalty=np.zeros(S),
                 lmda_path=[0], progress_bar=False, n_threads=32, intercept=False)
         B = np.array(
-            state.betas.toarray()[0].reshape((S, -1), order='C'),
+            self.X_S @ state.betas.toarray()[0] #.reshape((S, -1), order='C'),
             dtype=np.float32)
-        return torch.from_numpy(self.X_S @ B)
+        return torch.from_numpy(B)
 
 
 
