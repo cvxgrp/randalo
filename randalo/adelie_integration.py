@@ -64,7 +64,8 @@ class AdelieJacobian(lo.LinearOperator):
                 penalty=np.zeros(S),
                 lmda_path=[0], progress_bar=False, n_threads=32, intercept=False)
         B = np.array(
-            self.X_S @ state.betas.toarray()[0] #.reshape((S, -1), order='C'),
+            self.X_S @ state.betas.toarray()[0] #.reshape((S, -1), order='C')
+            ,
             dtype=np.float32)
         return torch.from_numpy(B)
 
