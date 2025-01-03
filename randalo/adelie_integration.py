@@ -34,6 +34,8 @@ class AdelieOperator(lo.LinearOperator):
             key = tuple(k.numpy() if isinstance(k, torch.Tensor) else k  for k in key)
         return AdelieOperator(self.X[key])
 
+_i = 0
+
 class AdelieJacobian(lo.LinearOperator):
     supports_operator_matrix = False
 
@@ -54,6 +56,7 @@ class AdelieJacobian(lo.LinearOperator):
         self._adjoint = self
 
     def _matmul_impl(self, v):
+        global _i
         if self._is_zero:
             return torch.zeros_like(v)
         S = self.X_S.shape[-1]
@@ -63,6 +66,15 @@ class AdelieJacobian(lo.LinearOperator):
                 #ad.glm.multigaussian(v.numpy(), dtype=np.float64),
                 penalty=np.zeros(S),
                 lmda_path=[0], progress_bar=False, n_threads=32, intercept=False)
+        import pickle
+        pickle.dump({
+            'fit_active': state.benchmark_fit_active, 
+            'fit_screen': state.benchmark_fit_screen, 
+            'invariance': state.benchmark_invariance, 
+            'kkt': state.benchmark_kkt, 
+            'screen': state.benchmark_screen,
+        }, f'/scratch/groups/candes/parth/benchmark{_i}.pkl')
+        _i += 1
         B = np.array(
             self.X_S @ state.betas.toarray()[0] #.reshape((S, -1), order='C')
             ,
