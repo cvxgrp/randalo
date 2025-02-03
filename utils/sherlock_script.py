@@ -26,8 +26,8 @@ df = pd.read_csv(os.path.join(data_dir, "phenotypes.QC.britishonly.csv"), index_
 df = df.drop('ethnicity', axis=1)
 covars_dense = np.array(
     df[['age', 'age_squared', 'sex'] + [f'PC{i}' for i in range(1, 11)]].to_numpy(),
-    dtype=np.float32)
-y = np.array(df['height'].to_numpy(), dtype=np.float32)
+    dtype=np.float64)
+y = np.array(df['height'].to_numpy(), dtype=np.float64)
 
 chromosomes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
@@ -37,11 +37,12 @@ X = ad.matrix.concatenate(
         [
             ad.matrix.snp_unphased(
                 ad.io.snp_unphased(
-                    os.path.join(cache_dir, f"EUR_subset_chr{chr}.snpdat"),
-                ), n_threads=32, dtype=np.float32
+                    os.path.join(cache_dir, f"EUR_subset_chr{chr}.snpdat"), "mmap"
+                ), n_threads=32, dtype=np.float64
             )
             for chr in chromosomes],
         axis=1,
+        n_threads=32
 )
 print(f'{X.shape=}')
 
@@ -57,7 +58,7 @@ y_test = y[test_mask]
 print(f'{X_train.shape=}')
 print(f'{X_test.shape=}')
 
-model_cache = f'/scratch/groups/candes/parth/fit_model_{task_id}.pkl'
+model_cache = f'/scratch/groups/candes/parth/fit_model_{task_id}_v3.pkl'
 
 if os.path.exists(model_cache):
     class fake_state:
@@ -78,11 +79,11 @@ else:
     ti_solve = time.monotonic()
     state = ad.grpnet(
         X=X_train,
-        glm=ad.glm.gaussian(y_train, dtype=np.float32),
+        glm=ad.glm.gaussian(y_train, dtype=np.float64),
         early_exit=False,
-        min_ratio=1e-6,
+        min_ratio=1e-9,
         n_threads=32,
-        lmda_path_size=241,
+        lmda_path_size=101,
     )
     tf_solve = time.monotonic()
 
@@ -100,7 +101,7 @@ for i in range(L):
     ins[i] = loss(torch.from_numpy(y_hat_train[i]), torch.from_numpy(y_train))
 
 ti_alo = time.monotonic()
-ld, alo, ts, r2 = ai.get_alo_for_sweep_v2(y_train, state, loss, 80)
+ld, alo, ts, r2 = ai.get_alo_for_sweep(y_train, state, loss, 20)
 tf_alo = time.monotonic()
 
-#np.savez(sys.argv[1], alo_lamda=ld, full_lamda=state.lmda_path, alo=alo, oos=oos, in_sample=ins, ts=ts, r2=r2, solve_time=tf_solve - ti_solve, alo_time=tf_alo - ti_alo)
+np.savez(sys.argv[1], alo_lamda=ld, full_lamda=state.lmda_path, alo=alo, oos=oos, in_sample=ins, ts=ts, r2=r2, solve_time=tf_solve - ti_solve, alo_time=tf_alo - ti_alo)

@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=512GB
-#SBATCH --partition=candes
+#SBATCH --partition=candes,pilanci
 
 BASE_DIR=$HOME/adelie_alo/benchmarking/lasso_sweep
 RESULTS_DIR=$BASE_DIR/results

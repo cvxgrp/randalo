@@ -67,13 +67,14 @@ class AdelieJacobian(lo.LinearOperator):
                 penalty=np.zeros(S),
                 lmda_path=[0], progress_bar=False, n_threads=32, intercept=False)
         import pickle
-        pickle.dump({
-            'fit_active': state.benchmark_fit_active, 
-            'fit_screen': state.benchmark_fit_screen, 
-            'invariance': state.benchmark_invariance, 
-            'kkt': state.benchmark_kkt, 
-            'screen': state.benchmark_screen,
-        }, f'/scratch/groups/candes/parth/benchmark{_i}.pkl')
+        with open(f'/scratch/groups/candes/parth/benchmark{_i}.pkl', 'wb') as fd:
+            pickle.dump({
+                'fit_active': state.benchmark_fit_active, 
+                'fit_screen': state.benchmark_fit_screen, 
+                'invariance': state.benchmark_invariance, 
+                'kkt': state.benchmark_kkt, 
+                'screen': state.benchmark_screen,
+            }, fd)
         _i += 1
         B = np.array(
             self.X_S @ state.betas.toarray()[0] #.reshape((S, -1), order='C')
