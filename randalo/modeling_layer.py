@@ -295,6 +295,7 @@ class LogisticLoss(Loss):
 class MSELoss(Loss):
     def __init__(self, weights=None):
         self.weights = weights
+
     def func(self, y, z):
         return self.weights * (y - z) ** 2
 

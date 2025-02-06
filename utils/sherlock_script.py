@@ -94,7 +94,8 @@ else:
     with open(model_cache, 'wb') as fd:
         pickle.dump({'betas': state.betas, 'lmda_path': state.lmda_path, 'intercepts': state.intercepts}, fd)
 
-train_risk = lambda x, y: torch.sum(weights * (x - y)**2) / torch.sum(weights)
+weights_t = torch.from_numpy(weights)
+train_risk = lambda x, y: torch.sum(weights_t * (x - y)**2) / torch.sum(weights_t)
 loss = torch.nn.MSELoss()
 L = state.betas.shape[0]
 oos = np.empty(L)
@@ -106,7 +107,7 @@ for i in range(L):
     ins[i] = loss(torch.from_numpy(y_hat_train[i]), torch.from_numpy(y_train))
 
 ti_alo = time.monotonic()
-ld, alo, ts, r2 = ai.get_alo_for_sweep(y_train, state, train_risk, weights, 20)
+ld, alo, ts, r2 = ai.get_alo_for_sweep(y_train, state, train_risk, weights_t, 20)
 tf_alo = time.monotonic()
 
 np.savez(sys.argv[1], alo_lamda=ld, full_lamda=state.lmda_path, alo=alo, oos=oos, in_sample=ins, ts=ts, r2=r2, solve_time=tf_solve - ti_solve, alo_time=tf_alo - ti_alo)
