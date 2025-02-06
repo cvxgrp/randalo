@@ -96,7 +96,7 @@ class AdelieState:
         self.index = idx
         self.ra_lmda.value = self.state.lmda_path[idx]
 
-def adelie_state_to_jacobian(y, state, adelie_state):
+def adelie_state_to_jacobian(y, weights, state, adelie_state):
     n, p = state.X.shape
     G, = state.groups.shape
     L, = state.lmda_path.shape
@@ -112,7 +112,7 @@ def adelie_state_to_jacobian(y, state, adelie_state):
         ell_2_2_term = (1 - state.alpha) / 2 * ra.SquareRegularizer(slice(None, -1))
         reg = adelie_state.ra_lmda * (ell_1_term + ell_2_2_term)
 
-    loss = ra.MSELoss()
+    loss = ra.MSELoss(weights)
     J = ra.Jacobian(
         y,
         AdelieOperator(state.X, state.intercept),
@@ -161,10 +161,10 @@ def get_alo_for_sweep_v2(y, state, risk_fun, step=1):
 
     return state.lmda_path[:L:step], output, times, r2
 
-def get_alo_for_sweep(y, state, risk_fun, step=1):
+def get_alo_for_sweep(y, state, risk_fun, weights, step=1):
     L, _ = state.betas.shape
     adelie_state = AdelieState(state)
-    loss, J = adelie_state_to_jacobian(y, state, adelie_state)
+    loss, J = adelie_state_to_jacobian(y, weights, state, adelie_state)
     y_hat = ad.diagnostic.predict(state.X, state.betas, state.intercepts)
 
     lmda = state.lmda_path[:L:step]

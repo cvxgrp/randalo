@@ -293,8 +293,13 @@ class LogisticLoss(Loss):
                  
 
 class MSELoss(Loss):
+    def __init__(self, weights=None):
+        self.weights = weights
     def func(self, y, z):
-        return (y - z) ** 2
+        return self.weights * (y - z) ** 2
 
     def to_cvxpy(self, y, z):
-        return cp.sum_squares(y - z) / np.prod(y.shape)
+        if self.weights is not None:
+            return cp.sum(cp.multiply(weights, cp.square(y - z)))
+        else:
+            return cp.sum_squares(y - z) / np.prod(y.shape)

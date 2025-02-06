@@ -49,8 +49,12 @@ print(f'{X.shape=}')
 rng = np.random.default_rng(task_id)
 P = np.random.permutation(y.shape[-1])
 n_train = P.size * 9 // 10
+
 train_mask = P[:n_train]
 test_mask = P[n_train:]
+weights = np.ones(P.size)
+weights[train_mask] = 0.0
+weights /= np.sum(weights)
 X_train = X[train_mask]
 y_train = y[train_mask]
 X_test = X[test_mask]
@@ -78,8 +82,8 @@ if os.path.exists(model_cache):
 else:
     ti_solve = time.monotonic()
     state = ad.grpnet(
-        X=X_train,
-        glm=ad.glm.gaussian(y_train, dtype=np.float64),
+        X=X,
+        glm=ad.glm.gaussian(y, dtype=np.float64, weights=weights),
         early_exit=False,
         min_ratio=1e-9,
         n_threads=32,
@@ -101,7 +105,7 @@ for i in range(L):
     ins[i] = loss(torch.from_numpy(y_hat_train[i]), torch.from_numpy(y_train))
 
 ti_alo = time.monotonic()
-ld, alo, ts, r2 = ai.get_alo_for_sweep(y_train, state, loss, 20)
+ld, alo, ts, r2 = ai.get_alo_for_sweep(y_train, state, loss, weights, 20)
 tf_alo = time.monotonic()
 
 np.savez(sys.argv[1], alo_lamda=ld, full_lamda=state.lmda_path, alo=alo, oos=oos, in_sample=ins, ts=ts, r2=r2, solve_time=tf_solve - ti_solve, alo_time=tf_alo - ti_alo)
