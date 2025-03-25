@@ -17,4 +17,4 @@ ml py-pytorch/2.4.1_py312
 . $HOME/randalo/.venv/bin/activate
 
 
-python $HOME/randalo/utils/cleanup_adelie_data.py
+python $HOME/randalo/utils/cleanup_adelie_data_v2.py
