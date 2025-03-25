@@ -31,13 +31,50 @@ y = np.array(df['height'].to_numpy(), dtype=np.float64)
 
 chromosomes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
+rng = np.random.default_rng(0x364a)
+P = rng.permutation(y.shape[-1])
+n_train = P.size * 9 // 10
+train_mask = np.ones(y.shape[-1], dtype=bool)
+train_mask[P[n_train:]] = False
+
+covars_dense_train = covars_dense[train_mask]
+y_train = y[train_mask]
+covars_dense_test = covars_dense[~train_mask]
+y_test = y[~train_mask]
+
+
 print('Data loading')
-X = ad.matrix.concatenate(
-        [ad.matrix.dense(covars_dense, n_threads=32)] + 
+X_train = ad.matrix.concatenate(
+        [ad.matrix.dense(covars_dense_train, n_threads=32)] + 
         [
             ad.matrix.snp_unphased(
                 ad.io.snp_unphased(
-                    os.path.join(cache_dir, f"EUR_subset_chr{chr}.snpdat"), "mmap"
+                    os.path.join(cache_dir, f"EUR_subset_chr{chr}_train.snpdat"), "mmap"
+                ), n_threads=32, dtype=np.float64
+            )
+            for chr in chromosomes],
+        axis=1,
+        n_threads=32
+)
+
+X_trainT = ad.matrix.concatenate(
+        [ad.matrix.dense(covars_dense_train.T, n_threads=32)] + 
+        [
+            ad.matrix.snp_unphased(
+                ad.io.snp_unphased(
+                    os.path.join(cache_dir, f"EUR_subset_chr{chr}T_train.snpdat"), "mmap"
+                ), n_threads=32, dtype=np.float64
+            )
+            for chr in chromosomes],
+        axis=0,
+        n_threads=32
+)
+X_test = ad.matrix.concatenate(
+        [ad.matrix.dense(covars_dense_test, n_threads=32)] + 
+        [
+            ad.matrix.snp_unphased(
+                ad.io.snp_unphased(
+                    os.path.join(cache_dir, f"EUR_subset_chr{chr}_test.snpdat"), "mmap"
                 ), n_threads=32, dtype=np.float64
             )
             for chr in chromosomes],
@@ -46,23 +83,7 @@ X = ad.matrix.concatenate(
 )
 print(f'{X.shape=}')
 
-rng = np.random.default_rng(task_id)
-P = np.random.permutation(y.shape[-1])
-n_train = P.size * 9 // 10
-
-train_mask = P[:n_train]
-test_mask = P[n_train:]
-weights = np.ones(P.size)
-weights[train_mask] = 0.0
-weights /= np.sum(weights)
-X_train = X[train_mask]
-y_train = y[train_mask]
-X_test = X[test_mask]
-y_test = y[test_mask]
-print(f'{X_train.shape=}')
-print(f'{X_test.shape=}')
-
-model_cache = f'/scratch/groups/candes/parth/fit_model_{task_id}_v3.pkl'
+model_cache = f'/scratch/groups/candes/parth/fit_model_{task_id}_v6.pkl'
 
 if os.path.exists(model_cache):
     class fake_state:
@@ -107,7 +128,7 @@ for i in range(L):
     ins[i] = loss(torch.from_numpy(y_hat_train[i]), torch.from_numpy(y_train))
 
 ti_alo = time.monotonic()
-ld, alo, ts, r2 = ai.get_alo_for_sweep(y_train, state, train_risk, weights_t, 20)
+ld, alo, ts, r2 = ai.get_alo_for_sweep(y_train, state,  train_risk, weights_t, 10, X_trainT=X_trainT)
 tf_alo = time.monotonic()
 
 np.savez(sys.argv[1], alo_lamda=ld, full_lamda=state.lmda_path, alo=alo, oos=oos, in_sample=ins, ts=ts, r2=r2, solve_time=tf_solve - ti_solve, alo_time=tf_alo - ti_alo)
