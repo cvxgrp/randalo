@@ -57,8 +57,13 @@ class AdelieOperator(lo.LinearOperator):
                 AdelieOperator(XT, X, False, self, (p, n))
 
     def _matmul_impl(self, v):
-        u = ad.diagnostic.gradients(self.XT, v.numpy().T, n_threads=32)
-        return torch.from_numpy(u)
+        if len(v.shape) == 1:
+            v = np.atleast_2d(v.numpy().T)
+            u = ad.diagnostic.gradients(self.XT, v, n_threads=32)
+            u.squeeze(0)
+        else:
+            u = ad.diagnostic.gradients(self.XT, v.numpy().T, n_threads=32)
+        return torch.from_numpy(u.T)
 
 
     def __getitem__(self, key):
