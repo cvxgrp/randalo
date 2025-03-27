@@ -67,17 +67,18 @@ for chr in chromosomes:
 
     total_size += variant_idxs.shape[0]
 
-    memmap_name = f'EUR_subset_chr{chr}.array'
+    memmap_name = os.path.join(cache_dir, f'EUR_subset_chr{chr}.array')
     array = np.memmap(memmap_name, dtype=np.int8, mode='w+', shape=(variant_idxs.shape[0], n_samples))
     array[:] = geno_out
 
-memmap_name = f'EUR_subset.array'
+memmap_name = os.path.join(cache_dir, f'EUR_subset.array')
 big_array = np.memmap(memmap_name, dtype=np.int8, mode='w+', shape=(total_size, n_samples))
 i = 0
 for chr in chromosomes:
-    memmap_name = f'EUR_subset_chr{chr}.array'
+    memmap_name = os.path.join(cace_dir, f'EUR_subset_chr{chr}.array')
     df_bim_chr = df_bim[df_bim["chr"] == chr]
     variant_idxs = df_bim_chr.index.to_numpy().astype(np.uint32)
-    array = np.memmap(memmap_name, dtype=np.int8, mode='w+', shape=(variant_idxs.shape[0], n_samples))
+    array = np.memmap(memmap_name, dtype=np.int8, mode='r', shape=(variant_idxs.shape[0], n_samples))
     big_array[i:(i := i + variant_idxs.shape[0])] = array
 
+print(total_size, n_samples)
