@@ -44,8 +44,8 @@ reader = pg.PgenReader(
                 raw_sample_ct=n_samples,
                 )
 
-rng = np.random.default_rng(task_id)
-P = np.random.permutation(y.shape[-1])
+rng = np.random.default_rng(0x364a)
+P = rng.permutation(n_samples)
 n_train = P.size * 9 // 10
 train_mask = np.ones(n_samples, dtype=bool)
 train_mask[P[n_train:]] = False
@@ -69,10 +69,10 @@ for chr in chromosomes:
 
     # create handler to convert the SNP matrix to .snpdat
     handler = ad.io.snp_unphased(snpdat_name_test)
-    _ = handler.write(geno_out_chr[~train_mask])
+    _ = handler.write(np.asfortranarray(geno_out_chr[~train_mask]))
     
     handler = ad.io.snp_unphased(snpdat_name_train)
-    _ = handler.write(geno_out_chr[train_mask])
+    _ = handler.write(np.asfortranarray(geno_out_chr[train_mask]))
     
     handler = ad.io.snp_unphased(snpdat_name_trainT)
     _ = handler.write(np.asfortranarray(geno_out_chr[train_mask].T))

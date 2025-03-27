@@ -26,7 +26,7 @@ df = pd.read_csv(os.path.join(data_dir, "phenotypes.QC.britishonly.csv"), index_
 df = df.drop('ethnicity', axis=1)
 covars_dense = np.array(
     df[['age', 'age_squared', 'sex'] + [f'PC{i}' for i in range(1, 11)]].to_numpy(),
-    dtype=np.float64)
+    dtype=np.float64, order='F')
 y = np.array(df['height'].to_numpy(), dtype=np.float64)
 
 chromosomes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
@@ -37,13 +37,13 @@ n_train = P.size * 9 // 10
 train_mask = np.ones(y.shape[-1], dtype=bool)
 train_mask[P[n_train:]] = False
 
-covars_dense_train = covars_dense[train_mask]
+covars_dense_train = np.asfortranarray(covars_dense[train_mask])
 y_train = y[train_mask]
-covars_dense_test = covars_dense[~train_mask]
+covars_dense_test = np.asfortranarray(covars_dense[~train_mask])
 y_test = y[~train_mask]
 
 
-print('Data loading')
+print('Data loading', flush=True)
 X_train = ad.matrix.concatenate(
         [ad.matrix.dense(covars_dense_train, n_threads=32)] + 
         [
@@ -56,9 +56,9 @@ X_train = ad.matrix.concatenate(
         axis=1,
         n_threads=32
 )
-
+print(f'{X_train.shape=}', flush=True)
 X_trainT = ad.matrix.concatenate(
-        [ad.matrix.dense(covars_dense_train.T, n_threads=32)] + 
+        [ad.matrix.dense(np.asfortranarray(covars_dense_train.T), n_threads=32)] + 
         [
             ad.matrix.snp_unphased(
                 ad.io.snp_unphased(
@@ -69,6 +69,7 @@ X_trainT = ad.matrix.concatenate(
         axis=0,
         n_threads=32
 )
+print(f'{X_trainT.shape=}', flush=True)
 X_test = ad.matrix.concatenate(
         [ad.matrix.dense(covars_dense_test, n_threads=32)] + 
         [
@@ -81,10 +82,11 @@ X_test = ad.matrix.concatenate(
         axis=1,
         n_threads=32
 )
-print(f'{X.shape=}')
+print(f'{X_test.shape=}', flush=True)
 
-model_cache = f'/scratch/groups/candes/parth/fit_model_{task_id}_v6.pkl'
+model_cache = f'/scratch/groups/candes/parth/fit_model_{task_id}_v7.pkl'
 
+weights = np.ones_like(y_train)
 if os.path.exists(model_cache):
     class fake_state:
         def __init__(self):
@@ -103,10 +105,10 @@ if os.path.exists(model_cache):
 else:
     ti_solve = time.monotonic()
     state = ad.grpnet(
-        X=X,
-        glm=ad.glm.gaussian(y, dtype=np.float64, weights=weights),
+        X=X_train,
+        glm=ad.glm.gaussian(y_train, dtype=np.float64, weights=weights),
         early_exit=False,
-        min_ratio=1e-9,
+        min_ratio=1e-5,
         n_threads=32,
         lmda_path_size=101,
     )
@@ -115,20 +117,22 @@ else:
     with open(model_cache, 'wb') as fd:
         pickle.dump({'betas': state.betas, 'lmda_path': state.lmda_path, 'intercepts': state.intercepts}, fd)
 
-weights_t = torch.from_numpy(weights)
-train_risk = lambda x, y: torch.sum(weights_t * (x - y)**2) / torch.sum(weights_t)
+train_risk = lambda x, y: torch.mean((x - y)**2)
 loss = torch.nn.MSELoss()
 L = state.betas.shape[0]
 oos = np.empty(L)
 ins = np.empty(L)
+print('Test/Train predict', flush=True)
 y_hat_test = ad.diagnostic.predict(X_test, state.betas, state.intercepts)
 y_hat_train = ad.diagnostic.predict(X_train, state.betas, state.intercepts)
 for i in range(L):
     oos[i] = loss(torch.from_numpy(y_hat_test[i]), torch.from_numpy(y_test))
     ins[i] = loss(torch.from_numpy(y_hat_train[i]), torch.from_numpy(y_train))
+print('Final oos loss:', oos[-1])
+print('Final ins loss:', ins[-1], flush=True)
 
 ti_alo = time.monotonic()
-ld, alo, ts, r2 = ai.get_alo_for_sweep(y_train, state,  train_risk, weights_t, 10, X_trainT=X_trainT)
+ld, alo, ts, r2 = ai.get_alo_for_sweep(y_train, state,  train_risk, torch.from_numpy(weights), 10, X_trainT=X_trainT)
 tf_alo = time.monotonic()
 
 np.savez(sys.argv[1], alo_lamda=ld, full_lamda=state.lmda_path, alo=alo, oos=oos, in_sample=ins, ts=ts, r2=r2, solve_time=tf_solve - ti_solve, alo_time=tf_alo - ti_alo)

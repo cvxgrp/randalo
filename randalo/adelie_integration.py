@@ -15,7 +15,7 @@ class AdelieOperator(lo.LinearOperator):
     def __init__(self, X, XT, intercept=False, adjoint=None, shape=None):
         if intercept:
             X = ad.matrix.concatenate([X, np.ones(X.shape[0])], axis=1, n_threads=32)
-            XT = ad.matrix.concatenate([XT, np.ones(XT.shape[1], dtype=dtype)], axis=0, n_threads=32)
+            XT = ad.matrix.concatenate([XT, np.ones((1, XT.shape[1]))], axis=0, n_threads=32)
 
         if shape is not None:
             self._shape = shape
@@ -25,7 +25,7 @@ class AdelieOperator(lo.LinearOperator):
             assert XT.shape == (p, n)
 
         self.X = X
-        self.X = XT
+        self.XT = XT
         self._adjoint = adjoint if adjoint is not None else \
                 AdelieOperator(XT, X, False, self, (p, n))
 
@@ -35,7 +35,9 @@ class AdelieOperator(lo.LinearOperator):
     def __getitem__(self, key):
         if isinstance(key, tuple):
             key = tuple(k.numpy() if isinstance(k, torch.Tensor) else k  for k in key)
-        return AdelieOperator(self.X[key], self.XT[key[::-1]])
+        X_key = self.X[key]
+        XT_key = self.XT[key[::-1]]
+        return AdelieOperator(X_key, XT_key)
 
 _i = 0
 
@@ -163,10 +165,10 @@ def get_alo_for_sweep_v2(y, state, risk_fun, step=1, X_trainT=None):
 
     return state.lmda_path[:L:step], output, times, r2
 
-def get_alo_for_sweep(y, state, risk_fun, weights, step=1, XtrainT=None):
+def get_alo_for_sweep(y, state, risk_fun, weights, step=1, X_trainT=None):
     L, _ = state.betas.shape
     adelie_state = AdelieState(state)
-    loss, J = adelie_state_to_jacobian(y, weights, state, adelie_state, XtrainT)
+    loss, J = adelie_state_to_jacobian(y, weights, state, adelie_state, X_trainT)
     y_hat = ad.diagnostic.predict(state.X, state.betas, state.intercepts)
 
     lmda = state.lmda_path[:L:step]
