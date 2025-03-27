@@ -9,12 +9,29 @@ from tqdm import tqdm
 
 import randalo as ra
 
+
+class Numpy(lo.LinearOperator):
+    supports_operator_matrix = True
+
+    def __init__(self, X, adjoint=None):
+        self.X = X
+        self._shape = X.shape
+        if adjoint is not None:
+            self._adjoint = adjoint 
+        else:
+            self._adjoint = Numpy(X.T, adjoint=self)
+
+    def _matmul_impl(self, v):
+        return torch.from_numpy(self.X @ v.numpy())
+
+
 class NumpyMemmap(lo.LinearOperator):
     supports_operator_matrix = True
 
     def __init__(self, file, shape):
         self.X = np.memmap(file, dtype=np.int8, mode='r', shape=shape)
         self._shape = shape
+        self._adjoint = Numpy(self.X.T)
 
     def _matmul_impl(self, v):
         return torch.from_numpy(self.X @ v.numpy())
@@ -40,7 +57,9 @@ class AdelieOperator(lo.LinearOperator):
                 AdelieOperator(XT, X, False, self, (p, n))
 
     def _matmul_impl(self, v):
-        return torch.from_numpy(self.X @ v.numpy())
+        u = ad.diagnostic.gradients(self.XT, v.numpy().T, n_threads=32)
+        return torch.from_numpy(u)
+
 
     def __getitem__(self, key):
         if isinstance(key, tuple):
