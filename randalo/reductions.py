@@ -20,7 +20,7 @@ def transform_model_to_cvxpy(loss, regularizer, X, y, variable):
     import cvxpy as cp
     return cp.Problem(
         cp.Minimize(
-            loss.to_cvxpy(y, X @ regularizer) +
+            loss.to_cvxpy(y, X @ variable) +
             regularizer.to_cvxpy(variable)
         )
     )
@@ -34,8 +34,9 @@ class Jacobian(lo.LinearOperator):
 
     supports_operator_matrix = True
 
-    def __init__(self, y, X, solution_func, loss, regularizer, inverse_method=None):
+    def __init__(self, y, X, solution_func, loss, regularizer, inverse_method=None, y_hat_func=None):
         self.solution_func = solution_func
+        self.y_hat_func = y_hat_func
         self.loss = loss
         self.regularizer = regularizer
         self.inverse_method = inverse_method
@@ -86,9 +87,12 @@ class Jacobian(lo.LinearOperator):
         else:
             X_mask = X
 
+        y_hat = y_hat_func() if y_hat_func is not None else X @ solution
+        print("Starting derivatives...")
         _, _, _, d2loss_dboth, d2loss_dy_hat2 = utils.compute_derivatives(
-            self.loss, y, X @ beta_hat
+            self.loss, y, y_hat
         )
+        print("Finished derivatives.")
 
         rhs_scaled = -d2loss_dboth[:, None] * rhs
 

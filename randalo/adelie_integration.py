@@ -148,7 +148,7 @@ class AdelieState:
         self.index = idx
         self.ra_lmda.value = self.state.lmda_path[idx]
 
-def adelie_state_to_jacobian(y, weights, state, adelie_state, X_trainT):
+def adelie_state_to_jacobian(y, y_hat, weights, state, adelie_state, X_trainT):
     n, p = state.X.shape
     G, = state.groups.shape
     L, = state.lmda_path.shape
@@ -173,7 +173,8 @@ def adelie_state_to_jacobian(y, weights, state, adelie_state, X_trainT):
         ]])))),
         loss,
         reg,
-        'minres'
+        'minres',
+        lambda: y_hat[adelie_state.index]
     )
 
     return loss, J
@@ -216,8 +217,8 @@ def get_alo_for_sweep_v2(y, state, risk_fun, step=1, X_trainT=None):
 def get_alo_for_sweep(y, state, risk_fun, weights, step=1, X_trainT=None):
     L, _ = state.betas.shape
     adelie_state = AdelieState(state)
-    loss, J = adelie_state_to_jacobian(y, weights, state, adelie_state, X_trainT)
     y_hat = ad.diagnostic.predict(state.X, state.betas, state.intercepts)
+    loss, J = adelie_state_to_jacobian(y, y_hat, weights, state, adelie_state, X_trainT)
 
     lmda = state.lmda_path[:L:step]
     output = np.empty_like(lmda)
