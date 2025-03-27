@@ -57,13 +57,27 @@ class AdelieOperator(lo.LinearOperator):
                 AdelieOperator(XT, X, False, self, (p, n))
 
     def _matmul_impl(self, v):
+        assert v.dtype == torch.float64
         if len(v.shape) == 1:
-            v = np.atleast_2d(v.numpy().T)
-            u = ad.diagnostic.gradients(self.XT, v, n_threads=32)
-            u.squeeze(0)
+            ell = 1
         else:
-            u = ad.diagnostic.gradients(self.XT, v.numpy().T, n_threads=32)
-        return torch.from_numpy(u.T)
+            ell = v.shape[1]
+        v_np = np.atleast_2d(v.numpy())
+        print("Allocating ones...", flush=True)
+        ones = np.ones_like(v).ravel()
+        print("Allocating destination...", flush=True)
+        out = np.empty((self.shape[0], ell))
+        print("Starting multiply...", flush=True)
+        t0 = time.monotonic()
+        for i in range(ell):
+            in_ptr = v_np[:, i]
+            out_ptr = out[:, i]
+            assert in_ptr.data.contigious, "in_ptr should be ctg"
+            assert out_ptr.data.contigious, "out_ptr should be ctg"
+            self.XT.mul(in_ptr, ones, out_ptr)
+        tf = time.monotonic()
+        print("Took...", tf - t0, "seconds", flush=True)
+        return torch.from_numpy(out)
 
 
     def __getitem__(self, key):
