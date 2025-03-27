@@ -9,6 +9,16 @@ from tqdm import tqdm
 
 import randalo as ra
 
+class NumpyMemmap(lo.LinearOperator):
+    supports_operator_matrix = True
+
+    def __init__(self, file, shape):
+        self.X = np.memmap(file, dtype=np.int8, mode='r', shape=shape)
+        self._shape = shape
+
+    def _matmul_impl(self, v):
+        return torch.from_numpy(self.X @ v.numpy())
+
 class AdelieOperator(lo.LinearOperator):
     supports_operator_matrix = True
 
