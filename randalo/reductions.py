@@ -87,7 +87,8 @@ class Jacobian(lo.LinearOperator):
         else:
             X_mask = X
 
-        y_hat = y_hat_func() if y_hat_func is not None else X @ solution
+        y_hat = utils.to_tensor(self.y_hat_func()) \
+             if self.y_hat_func is not None else X @ solution
         print("Starting derivatives...")
         _, _, _, d2loss_dboth, d2loss_dy_hat2 = utils.compute_derivatives(
             self.loss, y, y_hat
