@@ -49,10 +49,10 @@ class AdelieOperator(lo.LinearOperator):
         else:
             n, p = X.shape
             p = p if sparsity is None else sparsity.size
-            adj_p, adj_n = self.XT.shape
+            adj_p, adj_n = XT.shape
             adj_n = adj_n if adj_sparsity is None else adj_sparsity.size
-            assert adj_p == n
-            assert adj_n == p
+            assert adj_p == p
+            assert adj_n == n
             self._shape = (n, p)
 
         self.X = X
@@ -67,14 +67,18 @@ class AdelieOperator(lo.LinearOperator):
         assert v.dtype == torch.float64
         if len(v.shape) == 1:
             ell = 1
+            squeeze = True
         else:
             ell = v.shape[1]
+            squeeze = False
         v_np = np.atleast_2d(v.numpy())
  
         if self.sparsity is None:
-            out = self._matmul_impl_dense(v)
+            out = self._matmul_impl_dense(v_np, ell)
         else:
-            out = self._matmul_impl_sparse(v)
+            out = self._matmul_impl_sparse(v_np, ell)
+        if squeeze:
+           out = out.squeeze(-1)
         return torch.from_numpy(out).to(v_dtype)
 
     def _matmul_impl_sparse(self, v, ell):
@@ -95,7 +99,7 @@ class AdelieOperator(lo.LinearOperator):
         print("Starting multiply...", flush=True)
         t0 = time.monotonic()
         for i in range(ell):
-            in_ptr = v_np[:, i].ravel()
+            in_ptr = v[:, i].ravel()
             out_ptr = out[:, i]
             assert in_ptr.data.contiguous, "in_ptr should be ctg"
             assert out_ptr.data.contiguous, "out_ptr should be ctg"
