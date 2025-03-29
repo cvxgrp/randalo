@@ -39,7 +39,7 @@ class NumpyMemmap(lo.LinearOperator):
 class AdelieOperator(lo.LinearOperator):
     supports_operator_matrix = True
 
-    def __init__(self, X, XT, intercept=False, adjoint=None, shape=None):
+    def __init__(self, X, XT, intercept=False, adjoint=None, shape=None, sparsity=None, adj_sparsity=None):
         if intercept:
             X = ad.matrix.concatenate([X, np.ones(X.shape[0])], axis=1, n_threads=32)
             XT = ad.matrix.concatenate([XT, np.ones((1, XT.shape[1]))], axis=0, n_threads=32)
@@ -48,13 +48,18 @@ class AdelieOperator(lo.LinearOperator):
             self._shape = shape
         else:
             n, p = X.shape
+            p = p if sparsity is None else sparsity.size
+            adj_p, adj_n = self.XT.shape
+            adj_n = adj_n if adj_sparsity is None else adj_sparsity.size
+            assert adj_p == n
+            assert adj_n == p
             self._shape = (n, p)
-            assert XT.shape == (p, n)
 
         self.X = X
         self.XT = XT
+        self.sparsity = sparsity
         self._adjoint = adjoint if adjoint is not None else \
-                AdelieOperator(XT, X, False, self, (p, n))
+                AdelieOperator(XT, X, False, self, (p, n), sparsity=adj_sparsity)
 
     def _matmul_impl(self, v):
         v_dtype = v.dtype
@@ -65,6 +70,24 @@ class AdelieOperator(lo.LinearOperator):
         else:
             ell = v.shape[1]
         v_np = np.atleast_2d(v.numpy())
+ 
+        if self.sparsity is None:
+            out = self._matmul_impl_dense(v)
+        else:
+            out = self._matmul_impl_sparse(v)
+        return torch.from_numpy(out).to(v_dtype)
+
+    def _matmul_impl_sparse(self, v, ell):
+        rowidx = np.tile(self.sparsity, ell)
+        vals = v.ravel('F')
+        k = self.shape[1]
+        colptr = np.arange(0, k * ell, k)
+        csr = sp.csr_matrix((vals, rowidx, colptr))
+        out = np.empty(ell, self.shape[0])
+        self.X.sp_tmul(csr, out)
+        return out
+
+    def _matmul_impl_dense(self, v, ell):
         print("Allocating ones...", flush=True)
         ones = np.ones(v.shape[0]).ravel()
         print("Allocating destination...", flush=True)
@@ -79,14 +102,21 @@ class AdelieOperator(lo.LinearOperator):
             self.XT.mul(in_ptr, ones, out_ptr)
         tf = time.monotonic()
         print("Took...", tf - t0, "seconds", flush=True)
-        return torch.from_numpy(out).to(v_dtype)
+        return out
 
     def __getitem__(self, key):
         if isinstance(key, tuple):
-            key = tuple(k.numpy() if isinstance(k, torch.Tensor) else k  for k in key)
-        X_key = self.X[key]
-        XT_key = self.XT[key[::-1]]
-        return AdelieOperator(X_key, XT_key)
+            left_key, right_key = tuple(k.numpy() if isinstance(k, torch.Tensor) else k  for k in key)
+            if isinstance(right_key, slice) or right_key.dtype == bool:
+                right_key = np.arange(self.shape[1])[right_key]
+            if left_key == slice(None):
+                return AdelieOperator(self.X, self.XT[right_key], sparsity=right_key)
+
+            return AdelieOperator(self.X[left_key], self.XT[right_key], sparsity=right_key, adj_sparsity=left_key)
+
+        if isinstance(key, slice) or key.dtype == bool:
+            right_key = np.arange(self.shape[1])[key]
+        return AdelieOperator(self.X[key], self.XT, adj_sparsity=key)
 
 _i = 0
 
