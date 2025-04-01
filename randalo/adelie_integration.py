@@ -48,18 +48,19 @@ class AdelieOperator(lo.LinearOperator):
             self._shape = shape
         else:
             n, p = X.shape
-            p = p if sparsity is None else sparsity.size
             adj_p, adj_n = XT.shape
-            adj_n = adj_n if adj_sparsity is None else adj_sparsity.size
             assert adj_p == p
             assert adj_n == n
+            p = p if sparsity is None else sparsity.size
+            n = n if adj_sparsity is None else adj_sparsity.size
             self._shape = (n, p)
 
         self.X = X
         self.XT = XT
         self.sparsity = sparsity
+        self.adj_sparsity = adj_sparsity
         self._adjoint = adjoint if adjoint is not None else \
-                AdelieOperator(XT, X, False, self, (p, n), sparsity=adj_sparsity)
+                AdelieOperator(XT, X, False, self, (p, n), sparsity=adj_sparsity, adj_sparsity=sparsity)
 
     def _matmul_impl(self, v):
         v_dtype = v.dtype
@@ -85,11 +86,11 @@ class AdelieOperator(lo.LinearOperator):
         rowidx = np.tile(self.sparsity, ell)
         vals = v.ravel('F')
         k = self.shape[1]
-        colptr = np.arange(0, k * ell, k)
+        colptr = np.arange(0, k * ell + 1, k)
         csr = sp.csr_matrix((vals, rowidx, colptr))
-        out = np.empty(ell, self.shape[0])
+        out = np.empty((ell, self.shape[0]))
         self.X.sp_tmul(csr, out)
-        return out
+        return out.T
 
     def _matmul_impl_dense(self, v, ell):
         print("Allocating ones...", flush=True)
@@ -97,13 +98,14 @@ class AdelieOperator(lo.LinearOperator):
         print("Allocating destination...", flush=True)
         out = np.empty((self.shape[0], ell), order='F')
         print("Starting multiply...", flush=True)
+        XT = self.XT[:, self.adj_sparsity] if self.adj_sparsity is not None else self.XT
         t0 = time.monotonic()
         for i in range(ell):
             in_ptr = v[:, i].ravel()
             out_ptr = out[:, i]
             assert in_ptr.data.contiguous, "in_ptr should be ctg"
             assert out_ptr.data.contiguous, "out_ptr should be ctg"
-            self.XT.mul(in_ptr, ones, out_ptr)
+            XT.mul(in_ptr, ones, out_ptr)
         tf = time.monotonic()
         print("Took...", tf - t0, "seconds", flush=True)
         return out
@@ -114,13 +116,13 @@ class AdelieOperator(lo.LinearOperator):
             if isinstance(right_key, slice) or right_key.dtype == bool:
                 right_key = np.arange(self.shape[1])[right_key]
             if left_key == slice(None):
-                return AdelieOperator(self.X, self.XT[right_key], sparsity=right_key)
+                return AdelieOperator(self.X, self.XT, sparsity=right_key)
 
-            return AdelieOperator(self.X[left_key], self.XT[right_key], sparsity=right_key, adj_sparsity=left_key)
+            return AdelieOperator(self.X, self.XT, sparsity=right_key, adj_sparsity=left_key)
 
         if isinstance(key, slice) or key.dtype == bool:
-            right_key = np.arange(self.shape[1])[key]
-        return AdelieOperator(self.X[key], self.XT, adj_sparsity=key)
+            key = np.arange(self.shape[1])[key]
+        return AdelieOperator(self.X, self.XT, adj_sparsity=key)
 
 _i = 0
 

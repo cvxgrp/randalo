@@ -17,13 +17,25 @@ X = ad.matrix.concatenate(
         [
             ad.matrix.snp_unphased(
                 ad.io.snp_unphased(
-                    os.path.join(cache_dir, f"EUR_subset_chr{chr}.snpdat"),
+                    os.path.join(cache_dir, f"EUR_subset_chr{chr}_train.snpdat"),
                 ), dtype=np.float64
             )
             for chr in chromosomes],
         axis=1,
 )
+
+XT = ad.matrix.concatenate(
+        [
+            ad.matrix.snp_unphased(
+                ad.io.snp_unphased(
+                    os.path.join(cache_dir, f"EUR_subset_chr{chr}T_train.snpdat"),
+                ), dtype=np.float64
+            )
+            for chr in chromosomes],
+        axis=0,
+)
 print(X.shape)
+print(XT.shape)
 
 
 
@@ -37,5 +49,5 @@ import randalo.adelie_integration as ai
 import torch
 
 test = ad.diagnostic.predict(X, state.betas, state.intercepts)
-ld, alo, ts, r2 = ai.get_alo_for_sweep(y, state, torch.nn.MSELoss(), 5)
+ld, alo, ts, r2 = ai.get_alo_for_sweep(y, state, torch.nn.MSELoss(), 5, X_trainT=XT)
 print(alo, r2)
