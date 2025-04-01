@@ -100,26 +100,17 @@ class Jacobian(lo.LinearOperator):
         # TODO: Split cholesky/minres code paths into seperate ones
         if self.inverse_method == 'minres':
             if constraints is None and hessians is None:
-                import time
-                print("Line 1", time.monotonic(), flush=True)
                 sqrt_d2loss_dy_hat2 = torch.sqrt(d2loss_dy_hat2)[:, None]
-                print("Line 2", time.monotonic(), flush=True)
                 tilde_X = sqrt_d2loss_dy_hat2 * X_mask
-                print("Line 3", time.monotonic(), flush=True)
                 p1 = (rhs_scaled / sqrt_d2loss_dy_hat2)
-                print("Line 4", time.monotonic(), flush=True)
                 p2 = X.T @ p1
-                print("Line 5", time.monotonic(), flush=True)
                 p3 = X.T @ X
                 try:
                     M = lo.DiagonalOperator(X._randalo_preconditioner())
                 except AttributeError:
                     M = None
-                print("Line 6", time.monotonic(), flush=True)
                 p4 = minres(p3, p2, M=M)
-                print("Line 7", time.monotonic(), flush=True)
                 p5 = X @ p4
-                print("Line 8", time.monotonic(), flush=True)
                 return (p5 / sqrt_d2loss_dy_hat2).to(rhs.dtype)
             else:
                 raise NotImplementedError()
