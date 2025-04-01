@@ -111,8 +111,12 @@ class Jacobian(lo.LinearOperator):
                 p2 = X.T @ p1
                 print("Line 5", time.monotonic(), flush=True)
                 p3 = X.T @ X
+                try:
+                    M = lo.DiagonalOperator(X._randalo_preconditioner())
+                except AttributeError:
+                    M = None
                 print("Line 6", time.monotonic(), flush=True)
-                p4 = minres(p3, p2)
+                p4 = minres(p3, p2, M=M)
                 print("Line 7", time.monotonic(), flush=True)
                 p5 = X @ p4
                 print("Line 8", time.monotonic(), flush=True)

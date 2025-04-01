@@ -93,11 +93,8 @@ class AdelieOperator(lo.LinearOperator):
         return out.T
 
     def _matmul_impl_dense(self, v, ell):
-        print("Allocating ones...", flush=True)
         ones = np.ones(v.shape[0]).ravel()
-        print("Allocating destination...", flush=True)
         out = np.empty((self.shape[0], ell), order='F')
-        print("Starting multiply...", flush=True)
         XT = self.XT[:, self.adj_sparsity] if self.adj_sparsity is not None else self.XT
         t0 = time.monotonic()
         for i in range(ell):
@@ -107,8 +104,21 @@ class AdelieOperator(lo.LinearOperator):
             assert out_ptr.data.contiguous, "out_ptr should be ctg"
             XT.mul(in_ptr, ones, out_ptr)
         tf = time.monotonic()
-        print("Took...", tf - t0, "seconds", flush=True)
         return out
+
+    def _randalo_preconditioner(self):
+        if self.adj_sparsity is not None and self.sparsity is not None:
+            X = self.X[self.adj_sparsity, self.sparsity] 
+        elif self.adj_sparsity is None and self.sparsity is not None:
+            X = self.X[:, self.sparsity] 
+        elif self.adj_sparsity is not None and self.sparsity is None:
+            X = self.X[self.adj_sparsity] 
+        else:
+            X = self.X
+        ones = np.ones(X.shape[0]).ravel()
+        out = np.empty(X.shape[1]).ravel()
+        X.sq_mul(ones, out)
+        return torch.from_numpy(1 / out)
 
     def __getitem__(self, key):
         if isinstance(key, tuple):
