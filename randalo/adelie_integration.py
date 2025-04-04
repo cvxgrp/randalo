@@ -272,13 +272,12 @@ def get_alo_for_sweep(y, state, risk_fun, weights, step=1, X_trainT=None):
     times = np.empty_like(lmda)
     r2 = np.empty_like(lmda)
 
-    for out_i, i in tqdm(enumerate(range(0, L, step))):
+    for out_i, i in tqdm(list(enumerate(range(0, L, step)))):
         t0 = time.monotonic()
         randalo = adelie_state_to_randalo(y, y_hat[i], state, adelie_state, loss, J, i)
         output[out_i] = randalo.evaluate(risk_fun)
         times[out_i] = time.monotonic() - t0
         r2[out_i] = 1 - np.square(y - y_hat[i]).sum() / np.square(y - np.mean(y)).sum()
-        print('R^2',  r2[out_i], flush=True)
 
     return state.lmda_path[:L:step], output, times, r2
 
