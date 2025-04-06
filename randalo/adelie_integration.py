@@ -22,7 +22,7 @@ class Numpy(lo.LinearOperator):
             self._adjoint = Numpy(X.T, adjoint=self)
 
     def _matmul_impl(self, v):
-        return torch.from_numpy(self.X @ v.numpy())
+        return torch.from_numpy(self.X @ v.numpy()).to(v.dtype)
 
 
 class NumpyMemmap(lo.LinearOperator):
