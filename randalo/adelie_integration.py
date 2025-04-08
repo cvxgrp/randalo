@@ -207,8 +207,8 @@ def adelie_state_to_jacobian(y, y_hat, weights, state, adelie_state, X_trainT):
         ell_2_2_term = (1 - state.alpha) / 2 * ra.SquareRegularizer()
         reg = adelie_state.ra_lmda * (ell_1_term + ell_2_2_term)
     else:
-        ell_1_term = state.alpha * ra.L1Regularizer(slice(None, -1))
-        ell_2_2_term = (1 - state.alpha) / 2 * ra.SquareRegularizer(slice(None, -1))
+        ell_1_term = state.alpha * ra.L1Regularizer(slice(None, int(state.penalty.sum())))
+        ell_2_2_term = (1 - state.alpha) / 2 * ra.SquareRegularizer(slice(None, int(state.penalty.sum())))
         reg = adelie_state.ra_lmda * (ell_1_term + ell_2_2_term)
 
     loss = ra.MSELoss(weights)

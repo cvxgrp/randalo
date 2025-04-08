@@ -45,46 +45,49 @@ y_test = y[~train_mask]
 
 print('Data loading', flush=True)
 X_train = ad.matrix.concatenate(
-        [ad.matrix.dense(covars_dense_train, n_threads=32)] + 
         [
             ad.matrix.snp_unphased(
                 ad.io.snp_unphased(
                     os.path.join(cache_dir, f"EUR_subset_chr{chr}_train.snpdat"), "mmap"
                 ), n_threads=32, dtype=np.float64
             )
-            for chr in chromosomes],
+            for chr in chromosomes] +
+        [ad.matrix.dense(covars_dense_train, n_threads=32)], # Unpenalize covariates
         axis=1,
         n_threads=32
 )
 print(f'{X_train.shape=}', flush=True)
 X_trainT = ad.matrix.concatenate(
-        [ad.matrix.dense(np.asfortranarray(covars_dense_train.T), n_threads=32)] + 
         [
             ad.matrix.snp_unphased(
                 ad.io.snp_unphased(
                     os.path.join(cache_dir, f"EUR_subset_chr{chr}T_train.snpdat"), "mmap"
                 ), n_threads=32, dtype=np.float64
             )
-            for chr in chromosomes],
+            for chr in chromosomes] +
+        [ad.matrix.dense(np.asfortranarray(covars_dense_train.T), n_threads=32)],
         axis=0,
         n_threads=32
 )
 print(f'{X_trainT.shape=}', flush=True)
 X_test = ad.matrix.concatenate(
-        [ad.matrix.dense(covars_dense_test, n_threads=32)] + 
         [
             ad.matrix.snp_unphased(
                 ad.io.snp_unphased(
                     os.path.join(cache_dir, f"EUR_subset_chr{chr}_test.snpdat"), "mmap"
                 ), n_threads=32, dtype=np.float64
             )
-            for chr in chromosomes],
+            for chr in chromosomes] +
+        [ad.matrix.dense(covars_dense_test, n_threads=32)],
         axis=1,
         n_threads=32
 )
 print(f'{X_test.shape=}', flush=True)
 
-model_cache = f'/scratch/groups/candes/parth/fit_model_{task_id}_v7.pkl'
+penalty = np.ones(X_train.shape[1])
+penalty[-covars_dense_train.shape[1]:] = 0.0
+
+model_cache = f'/scratch/groups/candes/parth/fit_model_{task_id}_v8.pkl'
 
 weights = np.ones_like(y_train)
 if os.path.exists(model_cache):
@@ -95,6 +98,7 @@ if os.path.exists(model_cache):
             self.betas = d['betas']
             self.lmda_path = d['lmda_path']
             self.intercepts = d['intercepts']
+            self.penalty = penalty
             self.intercept = True
             self.X = X_train
             self.groups = np.arange(self.X.shape[1])
@@ -108,6 +112,7 @@ else:
         X=X_train,
         glm=ad.glm.gaussian(y_train, dtype=np.float64, weights=weights),
         early_exit=False,
+        penalty=penalty,
         min_ratio=1e-5,
         n_threads=32,
         lmda_path_size=101,
