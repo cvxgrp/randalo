@@ -67,18 +67,33 @@ X_test = ad.matrix.concatenate(
 )
 print(f'{X_test.shape=}', flush=True)
 
-weights = np.ones_like(y_train)
-    
+folds = 5
+rng = np.random.default_rng(0x219a)
+order = rng.permutation(y_train.shape[-1])
+step = y_train.shape[-1] // folds
+
+lmdas = np.logspace(ell := 2.95916, ell - 6)
+
+cv_risk = np.zeros(folds, 101)
+
 ti_cv = time.monotonic()
-state = ad.cv.cv_grpnet(
-    X=X_train,
-    glm=ad.glm.gaussian(y_train, dtype=np.float64, weights=weights),
-    early_exit=False,
-    min_ratio=1e-5,
-    n_threads=32,
-    lmda_path_size=101,
-    seed=0xEE219A,
-)
+for i in range(folds):
+    weights = np.ones_like(y_train)
+    weights[order[step * i: step * (i+1)]] = 0.0
+
+    state = ad.grpnet(
+        X=X_train,
+        glm=ad.glm.gaussian(y_train, dtype=np.float64, weights=weights),
+        early_exit=False,
+        n_threads=32,
+        lmda_path=lmdas,
+        seed=0xEE219A,
+    )
+    predicts = ad.diagnostic.predict(X_train, state.betas, state.intercepts, n_threads=32)
+    risks = (y_train[None, :] - predicts)**2
+    cv_risk[i] = np.sum((1 - weights) * risks)
+
+avg_cv_risk = np.sum(cv_risk, axis=0)
 tf_cv = time.monotonic()
 
-np.savez(sys.argv[1], full_lamda=state.lmda_path, cv=state.losses, avg_cv=avg_losses, cv_time=tf_cv - ti_cv)
+np.savez(sys.argv[1], cv_lamda=lmdas, cv=cv_risk, avg_cv=avg_cv_risk, cv_time=tf_cv - ti_cv)
