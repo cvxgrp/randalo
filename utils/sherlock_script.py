@@ -29,6 +29,9 @@ covars_dense = np.array(
     dtype=np.float64, order='F')
 y = np.array(df['height'].to_numpy(), dtype=np.float64)
 
+# Select on 20 < age < 55/60 and sex = Male
+# Stop on selecting half of the variables
+
 chromosomes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
 rng = np.random.default_rng(0x364a)
@@ -128,8 +131,8 @@ L = state.betas.shape[0]
 oos = np.empty(L)
 ins = np.empty(L)
 print('Test/Train predict', flush=True)
-y_hat_test = ad.diagnostic.predict(X_test, state.betas, state.intercepts)
-y_hat_train = ad.diagnostic.predict(X_train, state.betas, state.intercepts)
+y_hat_test = ad.diagnostic.predict(X_test, state.betas, state.intercepts, n_threads=32)
+y_hat_train = ad.diagnostic.predict(X_train, state.betas, state.intercepts, n_threads=32)
 for i in range(L):
     oos[i] = loss(torch.from_numpy(y_hat_test[i]), torch.from_numpy(y_test))
     ins[i] = loss(torch.from_numpy(y_hat_train[i]), torch.from_numpy(y_train))
