@@ -2,6 +2,7 @@ import unittest
 
 import cvxpy as cp
 import numpy as np
+import scipy.sparse
 import torch
 
 from randalo import modeling_layer as ml, reductions
@@ -66,6 +67,91 @@ class TestReductions(unittest.TestCase):
             dtype=torch.float32,
         )
         self.assertTrue(torch.allclose(actual, expected, atol=1e-3, rtol=1e-2))
+
+    def test_constrained_jacobian(self):
+        rng = np.random.default_rng(13)
+        X = rng.standard_normal((12, 4))
+        beta = np.array([1.0, 1.0, 0.4, -0.3])
+        y_value = X @ beta + 0.05 * rng.standard_normal(12)
+        difference = np.array([[1.0, -1.0, 0.0, 0.0]])
+        regularizer = (
+            0.1 * ml.L1Regularizer(linear=difference)
+            + 0.01 * ml.SquareRegularizer()
+        )
+
+        variable = cp.Variable(4)
+        y = cp.Parameter(12)
+        problem = reductions.transform_model_to_cvxpy(
+            ml.MSELoss(), regularizer, X, y, variable
+        )
+        solve_options = {
+            "solver": "CLARABEL",
+            "tol_gap_abs": 1e-10,
+            "tol_gap_rel": 1e-10,
+            "tol_feas": 1e-10,
+        }
+        y.value = y_value
+        problem.solve(**solve_options)
+        self.assertLess(np.linalg.norm(difference @ variable.value), 1e-6)
+
+        direction = rng.standard_normal(12)
+        epsilon = 1e-4
+        predictions = []
+        for sign in (-1, 1):
+            y.value = y_value + sign * epsilon * direction
+            problem.solve(warm_start=True, **solve_options)
+            predictions.append(X @ variable.value)
+        expected = torch.as_tensor(
+            (predictions[1] - predictions[0]) / (2 * epsilon),
+            dtype=torch.float32,
+        )
+
+        y.value = y_value
+        problem.solve(**solve_options)
+        for design in (X, scipy.sparse.csr_matrix(X)):
+            with self.subTest(sparse=scipy.sparse.issparse(design)):
+                jacobian = reductions.Jacobian(
+                    y_value,
+                    design,
+                    lambda: variable.value,
+                    ml.MSELoss(),
+                    regularizer,
+                )
+                actual = jacobian @ direction
+                self.assertTrue(
+                    torch.allclose(actual, expected, atol=1e-4, rtol=1e-3)
+                )
+
+    def test_regularizer_hessians(self):
+        beta = torch.tensor([1.2, -0.7, 0.3], dtype=torch.float64)
+        cases = [
+            (None, lambda value: torch.linalg.norm(value)),
+            ([0, 2], lambda value: torch.linalg.norm(value[[0, 2]])),
+            (
+                np.array([[1.0, -1.0, 0.0], [0.0, 1.0, 2.0]]),
+                lambda value: torch.linalg.norm(
+                    torch.tensor(
+                        [[1.0, -1.0, 0.0], [0.0, 1.0, 2.0]],
+                        dtype=value.dtype,
+                    )
+                    @ value
+                ),
+            ),
+        ]
+        for linear, function in cases:
+            with self.subTest(linear=linear):
+                regularizer = 1.7 * ml.L2Regularizer(linear=linear)
+                _, actual, _ = regularizer.get_constraint_hessian_mask(beta)
+                expected = torch.autograd.functional.hessian(
+                    lambda value: 1.7 * function(value), beta
+                )
+                self.assertTrue(torch.allclose(actual, expected, atol=1e-10))
+
+        huber = 0.5 * ml.HuberRegularizer()
+        _, hessian, _ = huber.get_constraint_hessian_mask(beta)
+        self.assertTrue(
+            torch.equal(hessian, torch.diag(torch.tensor([0.0, 1.0, 1.0])))
+        )
 
 
 if __name__ == "__main__":

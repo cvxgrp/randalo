@@ -229,49 +229,43 @@ class Jacobian(lo.LinearOperator):
                 R, torch.linalg.solve_triangular(R.T, kkt_rhs, upper=False), upper=True
             )
         else:
-            # TODO: double check this doesn't need additional scaling
             if mask is not None:
                 constraints_mask = constraints[:, mask]
             else:
                 constraints_mask = constraints
-            n, m = constraints_mask.shape
-            if n >= m:
-                _, N = torch.linalg.qr(constraints_mask, mode="r")
-            else:
-                N = constraints_mask
-
-            if hessians is None:
-                tilde_X = torch.sqrt(d2loss_dy_hat2)[:, None] * X_mask
-                _, P_R = torch.linalg.qr(tilde_X, mode="r")
-            else:
+            P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask)
+            if hessians is not None:
                 if mask is not None:
-                    hessians_mask = hessians[mask, :][:, mask]
-                else:
-                    hessian_mask = hessians
-                P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
-                P_R = torch.linalg.cholesky(P, upper=True)
+                    hessians = hessians[mask, :][:, mask]
+                P = P + hessians
 
-            S = self.D_nmask @ torch.linalg.solve_triangular(
-                P_R,
-                torch.linalg.solve_triangular(P_R.T, kkt_rhs, upper=False),
-                upper=True,
+            kkt_rhs = X_mask.T @ rhs_scaled
+            n_constraints = constraints_mask.shape[0]
+            zeros = torch.zeros(
+                (n_constraints, n_constraints),
+                dtype=P.dtype,
+                device=P.device,
             )
-            S_R = torch.linalg.cholesky(S, upper=True)
-            NPinvRhs = N @ torch.linalg.solve_triangular(
-                P_R,
-                torch.linalg.solve_triangular(P_R.T, kkt_rhs, upper=False),
-                upper=True,
+            kkt_matrix = torch.cat(
+                (
+                    torch.cat((P, constraints_mask.T), dim=1),
+                    torch.cat((constraints_mask, zeros), dim=1),
+                ),
+                dim=0,
             )
-            nu = torch.linalg.solve_triangular(
-                S_R,
-                torch.linalg.solve_triangular(S_R.T, -NPinvRhs, upper=False),
-                upper=True,
+            full_rhs = torch.cat(
+                (
+                    kkt_rhs,
+                    torch.zeros(
+                        (n_constraints, kkt_rhs.shape[1]),
+                        dtype=kkt_rhs.dtype,
+                        device=kkt_rhs.device,
+                    ),
+                ),
+                dim=0,
             )
-            v = torch.linalg.solve_triangular(
-                P_R,
-                torch.linalg.solve_triangular(P_R.T, kkt_rhs + N.T @ nu, upper=False),
-                upper=True,
-            )
+            solution = torch.linalg.lstsq(kkt_matrix, full_rhs).solution
+            v = solution[: X_mask.shape[1]]
         out = X_mask @ v
         return out if not needs_squeeze else out.squeeze(-1)
 
