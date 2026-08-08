@@ -33,6 +33,7 @@ class Jacobian(lo.LinearOperator):
     supports_operator_matrix = True
 
     def __init__(self, y, X, solution_func, loss, regularizer, inverse_method=None):
+        super().__init__()
         self.solution_func = solution_func
         self.loss = loss
         self.regularizer = regularizer
