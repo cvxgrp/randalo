@@ -8,21 +8,31 @@ Note: the experiments in the paper were performed in an earlier version of the c
 
 ## Installation
 
-In a folder run the following:
+Install RandALO from PyPI:
 
 ```bash
-git clone git@github.com:cvxgrp/randalo.git
-cd randalo
-
-# create a new environment with Python >= 3.10 (could also use venv or similar)
-conda create -n randalo python=3.12
-
-# install requirements and randalo
-pip install -r requirements.txt
+python -m pip install randalo
 ```
 
-CVXPY modeling helpers are optional for package installations. Install them
-with `pip install "randalo[cvxpy]"`.
+CVXPY modeling helpers are optional:
+
+```bash
+python -m pip install "randalo[cvxpy]"
+```
+
+For development, clone the repository and install the test and example
+dependencies in an environment with Python 3.10 or newer:
+
+```bash
+git clone https://github.com/cvxgrp/randalo.git
+cd randalo
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[test,examples]"
+python -m pytest
+```
+
+The legacy `requirements.txt` installs the same development dependencies.
 
 ## Usage
 
