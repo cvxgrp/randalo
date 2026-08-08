@@ -1,14 +1,34 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import importlib
 
-import cvxpy as cp
 import numpy as np
 import torch
 
 
+def _require_cvxpy():
+    try:
+        return importlib.import_module("cvxpy")
+    except ModuleNotFoundError as error:
+        if error.name != "cvxpy":
+            raise
+        raise ModuleNotFoundError(
+            "CVXPY support requires the optional dependency; "
+            "install it with `pip install 'randalo[cvxpy]'`."
+        ) from error
+
+
+class _CVXPYProxy:
+    def __getattr__(self, name):
+        return getattr(_require_cvxpy(), name)
+
+
+cp = _CVXPYProxy()
+
+
 @dataclass
 class HyperParameter:
-    parameter: cp.Parameter = field(default_factory=cp.Parameter)
+    parameter: object = field(default_factory=lambda: cp.Parameter())
     scale: float = field(init=False, default=1.0)
 
     def __mul__(self, r):

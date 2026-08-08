@@ -25,6 +25,16 @@ dependencies = [
     "torch-linops",
 ]
 
+[project.optional-dependencies]
+cvxpy = [
+    "cvxpy",
+]
+test = [
+    "cvxpy",
+    "cvxpylayers",
+    "pytest",
+]
+
 [project.urls]
 Homepage = "https://github.com/cvxgrp/randalo"
 

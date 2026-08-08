@@ -175,21 +175,13 @@ class TestSklearnRandALO(unittest.TestCase):
         actual = RandALO.from_sklearn(model, X, y)._jac @ torch.eye(self.n)
         self.assertTrue(torch.allclose(expected, actual, atol=1e-6))
 
-    def test_sparse_design(self):
+    def test_sparse_design_is_rejected(self):
         X_sparse = scipy.sparse.csr_matrix(self.X)
         model = sklearn.linear_model.Ridge(alpha=0.5, fit_intercept=False).fit(
             X_sparse, self.y
         )
-        expected = utils.to_tensor(
-            self.X
-            @ np.linalg.solve(
-                self.X.T @ self.X + model.alpha * np.eye(self.p), self.X.T
-            )
-        )
-        actual = RandALO.from_sklearn(model, X_sparse, self.y)._jac @ torch.eye(
-            self.n
-        )
-        self.assertTrue(torch.allclose(expected, actual, atol=1e-6))
+        with self.assertRaisesRegex(TypeError, "Sparse data was passed"):
+            RandALO.from_sklearn(model, X_sparse, self.y)
 
     def test_lasso(self):
         # get a path of parameters and shrink a bit so we aren't at the max

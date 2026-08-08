@@ -189,8 +189,7 @@ def map_sklearn(
     model : sklearn.base.BaseEstimator
         A fitted supported estimator.
     X : array-like of shape (n_samples, n_features)
-        The same training design matrix used to fit ``model``. Sparse matrices
-        are accepted and densified for the Jacobian computation.
+        The same training design matrix used to fit ``model``.
     y : array-like of shape (n_samples,)
         The same training targets used to fit ``model``.
     sample_weight : float or array-like of shape (n_samples,), optional
@@ -213,7 +212,7 @@ def map_sklearn(
         raise ValueError("Both X and y must be provided.")
 
     X_checked = sklearn.utils.validation.check_array(
-        X, accept_sparse=("csr", "csc"), ensure_2d=True, dtype="numeric"
+        X, accept_sparse=False, ensure_2d=True, dtype="numeric"
     )
     y_checked = np.asarray(y)
     if y_checked.ndim != 1:
@@ -226,9 +225,6 @@ def map_sklearn(
             f"X and y have inconsistent sample counts: {X_checked.shape[0]} "
             f"and {y_checked.shape[0]}."
         )
-    if scipy.sparse.issparse(X_checked):
-        X_checked = X_checked.toarray()
-
     n = X_checked.shape[0]
     weights = _validate_sample_weight(sample_weight, n)
     is_logistic = isinstance(model, sklearn.linear_model.LogisticRegression)
