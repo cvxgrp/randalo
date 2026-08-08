@@ -154,22 +154,26 @@ def _elastic_net_regularizer(l1_scale, square_scale, penalized):
 def _logistic_l1_ratio(model):
     """Return the effective L1 ratio across old and new sklearn APIs."""
     penalty = getattr(model, "penalty", "deprecated")
-    if penalty in (None, "none"):
-        return None
-    if penalty == "l1":
-        return 1.0
-    if penalty == "l2":
-        return 0.0
-    if penalty == "elasticnet":
-        if model.l1_ratio is None:
-            raise ValueError("l1_ratio must be set for an elastic-net penalty.")
-        return float(model.l1_ratio)
-    if penalty == "deprecated":
-        # sklearn >= 1.8 expresses the penalty using C and l1_ratio.
-        if np.isinf(model.C):
+    match penalty:
+        case None | "none":
             return None
-        return float(model.l1_ratio)
-    raise ValueError(f"Unsupported LogisticRegression penalty: {penalty!r}.")
+        case "l1":
+            return 1.0
+        case "l2":
+            return 0.0
+        case "elasticnet":
+            if model.l1_ratio is None:
+                raise ValueError("l1_ratio must be set for an elastic-net penalty.")
+            return float(model.l1_ratio)
+        case "deprecated":
+            # sklearn >= 1.8 expresses the penalty using C and l1_ratio.
+            if np.isinf(model.C):
+                return None
+            return float(model.l1_ratio)
+        case _:
+            raise ValueError(
+                f"Unsupported LogisticRegression penalty: {penalty!r}."
+            )
 
 
 def map_sklearn(
@@ -232,80 +236,86 @@ def map_sklearn(
         model, X_checked, logistic=is_logistic
     )
 
-    if isinstance(model, sklearn.linear_model.LinearRegression):
-        y_checked = np.asarray(y_checked, dtype=float)
-        loss = _weighted_loss(ml.MSELoss(), weights)
-        reg = _zero_or_nonnegative(model, penalized)
-        y_hat = np.asarray(model.predict(X))
+    match model:
+        case sklearn.linear_model.LinearRegression():
+            y_checked = np.asarray(y_checked, dtype=float)
+            loss = _weighted_loss(ml.MSELoss(), weights)
+            reg = _zero_or_nonnegative(model, penalized)
+            y_hat = np.asarray(model.predict(X))
 
-    elif isinstance(model, sklearn.linear_model.Ridge):
-        y_checked = np.asarray(y_checked, dtype=float)
-        loss = _weighted_loss(ml.MSELoss(), weights)
-        alpha = _as_scalar(model.alpha, "alpha")
-        reg = alpha / weights.sum() * ml.SquareRegularizer(linear=penalized)
-        if model.positive:
-            reg = reg + ml.NonNegativeRegularizer(linear=penalized)
-        y_hat = np.asarray(model.predict(X))
+        case sklearn.linear_model.Ridge():
+            y_checked = np.asarray(y_checked, dtype=float)
+            loss = _weighted_loss(ml.MSELoss(), weights)
+            alpha = _as_scalar(model.alpha, "alpha")
+            reg = alpha / weights.sum() * ml.SquareRegularizer(linear=penalized)
+            if model.positive:
+                reg = reg + ml.NonNegativeRegularizer(linear=penalized)
+            y_hat = np.asarray(model.predict(X))
 
-    elif isinstance(model, sklearn.linear_model.LassoLars):
-        if sample_weight is not None:
-            raise ValueError("LassoLars.fit does not support sample_weight.")
-        y_checked = np.asarray(y_checked, dtype=float)
-        loss = ml.MSELoss()
-        alpha = _as_scalar(model.alpha, "alpha")
-        reg = _elastic_net_regularizer(2.0 * alpha, 0.0, penalized)
-        if model.positive and alpha == 0:
-            reg = ml.NonNegativeRegularizer(linear=penalized)
-        y_hat = np.asarray(model.predict(X))
+        case sklearn.linear_model.LassoLars():
+            if sample_weight is not None:
+                raise ValueError("LassoLars.fit does not support sample_weight.")
+            y_checked = np.asarray(y_checked, dtype=float)
+            loss = ml.MSELoss()
+            alpha = _as_scalar(model.alpha, "alpha")
+            reg = _elastic_net_regularizer(2.0 * alpha, 0.0, penalized)
+            if model.positive and alpha == 0:
+                reg = ml.NonNegativeRegularizer(linear=penalized)
+            y_hat = np.asarray(model.predict(X))
 
-    elif isinstance(model, sklearn.linear_model.Lasso):
-        y_checked = np.asarray(y_checked, dtype=float)
-        loss = _weighted_loss(ml.MSELoss(), weights)
-        alpha = _as_scalar(model.alpha, "alpha")
-        reg = _elastic_net_regularizer(2.0 * alpha, 0.0, penalized)
-        if model.positive and alpha == 0:
-            reg = ml.NonNegativeRegularizer(linear=penalized)
-        y_hat = np.asarray(model.predict(X))
+        case sklearn.linear_model.Lasso():
+            y_checked = np.asarray(y_checked, dtype=float)
+            loss = _weighted_loss(ml.MSELoss(), weights)
+            alpha = _as_scalar(model.alpha, "alpha")
+            reg = _elastic_net_regularizer(2.0 * alpha, 0.0, penalized)
+            if model.positive and alpha == 0:
+                reg = ml.NonNegativeRegularizer(linear=penalized)
+            y_hat = np.asarray(model.predict(X))
 
-    elif isinstance(model, sklearn.linear_model.ElasticNet):
-        y_checked = np.asarray(y_checked, dtype=float)
-        loss = _weighted_loss(ml.MSELoss(), weights)
-        alpha = _as_scalar(model.alpha, "alpha")
-        reg = _elastic_net_regularizer(
-            2.0 * alpha * model.l1_ratio,
-            alpha * (1.0 - model.l1_ratio),
-            penalized,
-        )
-        if model.positive and alpha == 0:
-            reg = ml.NonNegativeRegularizer(linear=penalized)
-        y_hat = np.asarray(model.predict(X))
-
-    else:
-        if len(model.classes_) != 2:
-            raise ValueError("Only binary logistic regression is supported.")
-        negative = y_checked == model.classes_[0]
-        positive = y_checked == model.classes_[1]
-        if not np.all(negative | positive):
-            raise ValueError("y contains labels not present in model.classes_.")
-
-        class_weights = _logistic_class_weights(model, y_checked, weights)
-        weights = weights * class_weights
-        if weights.sum() <= 0:
-            raise ValueError("The combined sample and class weights must be positive.")
-        loss = _weighted_loss(ml.LogisticLoss(), weights)
-        y_checked = np.where(positive, 1.0, -1.0)
-
-        l1_ratio = _logistic_l1_ratio(model)
-        inverse_strength = 0.0 if np.isinf(model.C) else 1.0 / model.C
-        if l1_ratio is None or inverse_strength == 0:
-            reg = ml.ZeroRegularizer()
-        else:
+        case sklearn.linear_model.ElasticNet():
+            y_checked = np.asarray(y_checked, dtype=float)
+            loss = _weighted_loss(ml.MSELoss(), weights)
+            alpha = _as_scalar(model.alpha, "alpha")
             reg = _elastic_net_regularizer(
-                inverse_strength * l1_ratio / weights.sum(),
-                0.5 * inverse_strength * (1.0 - l1_ratio) / weights.sum(),
+                2.0 * alpha * model.l1_ratio,
+                alpha * (1.0 - model.l1_ratio),
                 penalized,
             )
-        y_hat = np.asarray(model.decision_function(X))
+            if model.positive and alpha == 0:
+                reg = ml.NonNegativeRegularizer(linear=penalized)
+            y_hat = np.asarray(model.predict(X))
+
+        case sklearn.linear_model.LogisticRegression():
+            if len(model.classes_) != 2:
+                raise ValueError("Only binary logistic regression is supported.")
+            negative = y_checked == model.classes_[0]
+            positive = y_checked == model.classes_[1]
+            if not np.all(negative | positive):
+                raise ValueError("y contains labels not present in model.classes_.")
+
+            class_weights = _logistic_class_weights(model, y_checked, weights)
+            weights = weights * class_weights
+            if weights.sum() <= 0:
+                raise ValueError(
+                    "The combined sample and class weights must be positive."
+                )
+            loss = _weighted_loss(ml.LogisticLoss(), weights)
+            y_checked = np.where(positive, 1.0, -1.0)
+
+            l1_ratio = _logistic_l1_ratio(model)
+            inverse_strength = 0.0 if np.isinf(model.C) else 1.0 / model.C
+            if l1_ratio is None or inverse_strength == 0:
+                reg = ml.ZeroRegularizer()
+            else:
+                reg = _elastic_net_regularizer(
+                    inverse_strength * l1_ratio / weights.sum(),
+                    0.5 * inverse_strength * (1.0 - l1_ratio) / weights.sum(),
+                    penalized,
+                )
+            y_hat = np.asarray(model.decision_function(X))
+
+        case _:
+            raise AssertionError("Validated estimator was not mapped.")
 
     if y_hat.ndim != 1:
         raise ValueError(
