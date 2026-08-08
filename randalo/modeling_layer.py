@@ -93,11 +93,22 @@ class Regularizer(ABC):
 
     @abstractmethod
     def to_cvxpy(self, variable, func):
-        expr = func(obj.linear @ variable if obj.linear is not None else variable)
-        if obj.parameter is None:
-            return obj.scale * expr
+        if self.linear is None:
+            argument = variable
+        elif isinstance(self.linear, list):
+            argument = variable[self.linear]
         else:
-            return obj.scale * obj.parameter.scale * obj.parameter.parameter * expr
+            argument = self.linear @ variable
+
+        expression = func(argument)
+        if self.parameter is None:
+            return self.scale * expression
+        return (
+            self.scale
+            * self.parameter.scale
+            * self.parameter.parameter
+            * expression
+        )
 
     @abstractmethod
     def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
@@ -125,7 +136,7 @@ class Regularizer(ABC):
 
 class SquareRegularizer(Regularizer):
     def to_cvxpy(self, variable):
-        super().to_cvxpy(variable, cp.sum_squares)
+        return super().to_cvxpy(variable, cp.sum_squares)
 
     def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         scale = self._scale()
@@ -147,7 +158,7 @@ class SquareRegularizer(Regularizer):
 
 class L1Regularizer(Regularizer):
     def to_cvxpy(self, variable):
-        super().to_cvxpy(variable, cp.norm1)
+        return super().to_cvxpy(variable, cp.norm1)
 
     def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         mask = torch.ones_like(beta_hat, dtype=bool)
@@ -202,7 +213,7 @@ class NonNegativeRegularizer(Regularizer):
 
 class L2Regularizer(Regularizer):
     def to_cvxpy(self, variable):
-        super().to_cvxpy(variable, cp.norm2)
+        return super().to_cvxpy(variable, cp.norm2)
 
     def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         linear = self.linear
@@ -262,7 +273,7 @@ class Sum:
             return NotImplemented
 
     def to_cvxpy(self, variable):
-        return cp.sum([term.to_cvxpy(variable) for term in terms])
+        return cp.sum([term.to_cvxpy(variable) for term in self.exprs])
 
     def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
         constraints = []

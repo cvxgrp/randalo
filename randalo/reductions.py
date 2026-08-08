@@ -109,14 +109,21 @@ def _solve_sparse_least_squares(X, curvature, rhs):
 
 def gen_cvxpy_jacobian(loss, regularizer, X, variable, y, inversion_method=None):
     prob = transform_model_to_cvxpy(loss, regularizer, X, y, variable)
-    J = Jacobian(y, X, lambda: variable.value, loss, regularizer, inversion_method=None)
+    J = Jacobian(
+        y,
+        X,
+        lambda: variable.value,
+        loss,
+        regularizer,
+        inverse_method=inversion_method,
+    )
     return prob, J
 
 def transform_model_to_cvxpy(loss, regularizer, X, y, variable):
     import cvxpy as cp
     return cp.Problem(
         cp.Minimize(
-            loss.to_cvxpy(y, X @ regularizer) +
+            loss.to_cvxpy(y, X @ variable) +
             regularizer.to_cvxpy(variable)
         )
     )
