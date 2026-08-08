@@ -42,10 +42,10 @@ alo = RandALO.from_sklearn(model, X, y) # set up the Jacobian
 mse_estimate = alo.evaluate(nn.MSELoss()) # estimate risk
 ```
 
-The integration supports fitted models with or without an intercept,
-nonnegative coefficient constraints, and sample weights. If the model was
-fitted with sample weights, pass the same weights again because scikit-learn
-does not store fit-time sample weights:
+The integration supports fitted models with or without an intercept, CSR and
+CSC sparse training matrices, nonnegative coefficient constraints, and sample
+weights. If the model was fitted with sample weights, pass the same weights
+again because scikit-learn does not store fit-time sample weights:
 
 ```python
 model = Lasso(1.0).fit(X, y, sample_weight=sample_weight)
