@@ -114,13 +114,15 @@ class SquareRegularizer(Regularizer):
         if self.linear is None:
             return None, torch.diag(
                     2 * scale * torch.ones_like(beta_hat, dtype=beta_hat.dtype)), None
-        elif isinstance(linear, list):
+        elif isinstance(self.linear, list):
             diag = torch.zeros_like(beta_hat)
-            diag[linear] = scale
+            diag[self.linear] = 2 * scale
             return None, torch.diag(diag), None
         else:
-            A = utils.to_tensor(linear)
-            return None, torch.diag(scale * (A.mT @ A)), None
+            A = torch.as_tensor(
+                self.linear, dtype=beta_hat.dtype, device=beta_hat.device
+            )
+            return None, 2 * scale * (A.mT @ A), None
 
 
 class L1Regularizer(Regularizer):
@@ -128,17 +130,54 @@ class L1Regularizer(Regularizer):
         super().to_cvxpy(variable, cp.norm1)
 
     def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
-        scale = self._scale()
         mask = torch.ones_like(beta_hat, dtype=bool)
         if self.linear is None:
             mask[torch.abs(beta_hat) <= epsilon] = False
             return None, None, mask
-        elif isinstance(linear, list):
-            mask[linear][torch.abs(beta_hat[linear]) <= epsilon] = False
+        elif isinstance(self.linear, list):
+            indices = torch.as_tensor(
+                self.linear, dtype=torch.long, device=beta_hat.device
+            )
+            mask[indices] = torch.abs(beta_hat[indices]) > epsilon
             return None, None, mask
         else:
-            A = utils.from_numpy(linear)
+            A = torch.as_tensor(
+                self.linear, dtype=beta_hat.dtype, device=beta_hat.device
+            )
             return A[torch.abs(A @ beta_hat) <= epsilon, :], None, None
+
+
+class ZeroRegularizer(Regularizer):
+    """A regularizer with no value, curvature, or active constraints."""
+
+    def to_cvxpy(self, variable):
+        return cp.Constant(0.0)
+
+    def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
+        return None, None, None
+
+
+class NonNegativeRegularizer(Regularizer):
+    """The indicator of nonnegative coefficients.
+
+    ``linear`` may select the coefficients constrained to be nonnegative. This
+    is primarily used to reproduce scikit-learn's ``positive=True`` active set.
+    """
+
+    def to_cvxpy(self, variable):
+        constrained = variable if self.linear is None else variable[self.linear]
+        return cp.transforms.indicator([constrained >= 0])
+
+    def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
+        mask = torch.ones_like(beta_hat, dtype=bool)
+        if self.linear is None:
+            mask = beta_hat > epsilon
+        else:
+            indices = torch.as_tensor(
+                self.linear, dtype=torch.long, device=beta_hat.device
+            )
+            mask[indices] = beta_hat[indices] > epsilon
+        return None, None, mask
 
 
 class L2Regularizer(Regularizer):
@@ -209,6 +248,7 @@ class Sum:
         constraints = []
         hessians = []
         mask = torch.ones_like(beta_hat, dtype=bool)
+        has_mask = False
         for reg in self.exprs:
             cons, hess, m = reg.get_constraint_hessian_mask(beta_hat, epsilon)
             if cons is not None:
@@ -217,10 +257,11 @@ class Sum:
                 hessians.append(hess)
             if m is not None:
                 mask &= m
+                has_mask = True
 
         constraints = torch.vstack(constraints) if len(constraints) > 0 else None
         hessians = sum(hessians) if len(hessians) > 0 else None
-        return constraints, hessians, mask
+        return constraints, hessians, mask if has_mask else None
  
 
 class Loss(ABC):
@@ -236,9 +277,37 @@ class Loss(ABC):
         pass
 
 
+class WeightedLoss(Loss):
+    """Apply fixed per-sample weights to an elementwise loss.
+
+    The weights are expected to have mean one, so this class preserves the
+    objective scale of the wrapped loss.
+    """
+
+    def __init__(self, loss, sample_weight):
+        self.loss = loss
+        self.sample_weight = torch.as_tensor(sample_weight).detach().clone()
+
+    def func(self, y, z):
+        sample_weight = self.sample_weight.to(dtype=z.dtype, device=z.device)
+        return sample_weight * self.loss.func(y, z)
+
+    def to_cvxpy(self, y, z):
+        sample_weight = np.asarray(self.sample_weight)
+        if isinstance(self.loss, MSELoss):
+            elementwise_loss = cp.square(y - z)
+        elif isinstance(self.loss, LogisticLoss):
+            elementwise_loss = cp.logistic(-cp.multiply(y, z))
+        else:
+            raise NotImplementedError(
+                "CVXPY conversion is not implemented for this weighted loss."
+            )
+        return cp.sum(cp.multiply(sample_weight, elementwise_loss)) / np.prod(y.shape)
+
+
 class LogisticLoss(Loss):
     def func(self, y, z):
-        return torch.log(1 + torch.exp(-y * z))
+        return torch.nn.functional.softplus(-y * z)
 
     def to_cvxpy(self, y, z):
         return cp.sum(cp.logistic(-cp.multiply(y, z))) / np.prod(y.shape)

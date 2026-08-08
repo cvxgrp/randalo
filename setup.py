@@ -30,6 +30,7 @@ setup(
     install_requires=[
         "numpy >= 1.17.5",
         "scipy",
+        "scikit-learn",
         "torch",
         "torch-linops",
     ],

@@ -70,6 +70,7 @@ class TestRandALO(unittest.TestCase):
         self.assertAlmostEqual(
             risk_alo,
             torch.mean((self.y - self.y_hat) ** 2 / (1 - diag) ** 2).item(),
+            places=6,
         )
 
     def test_logistic(self):

@@ -3,8 +3,11 @@ import unittest
 import numpy as np
 import scipy
 import scipy.special
+import scipy.sparse
+import sklearn.base
 import sklearn.linear_model
 import sklearn.linear_model._coordinate_descent
+import sklearn.utils.class_weight
 import torch
 
 from randalo import RandALO
@@ -101,6 +104,92 @@ class TestSklearnRandALO(unittest.TestCase):
 
             # check numerically
             self.assertRandomJacobianDirectionAlmostEqual(ridge, ra_jac)
+
+    def test_weighted_regression_with_intercepts(self):
+        sample_weight = np.linspace(0.25, 2.0, self.n)
+        sample_weight[0] = 0.0
+        cases = [
+            sklearn.linear_model.LinearRegression(),
+            sklearn.linear_model.Ridge(alpha=0.7),
+            sklearn.linear_model.Lasso(alpha=0.1, tol=1e-10, max_iter=100000),
+            sklearn.linear_model.ElasticNet(
+                alpha=0.1,
+                l1_ratio=0.35,
+                tol=1e-10,
+                max_iter=100000,
+            ),
+        ]
+
+        for model in cases:
+            with self.subTest(model=type(model).__name__):
+                model.fit(self.X, self.y, sample_weight=sample_weight)
+                mask = np.ones(self.p, dtype=bool)
+                if isinstance(
+                    model,
+                    (sklearn.linear_model.Lasso, sklearn.linear_model.ElasticNet),
+                ):
+                    mask = np.abs(model.coef_) > 1e-6
+
+                design = np.column_stack((self.X[:, mask], np.ones(self.n)))
+                penalty_hessian = np.zeros((design.shape[1], design.shape[1]))
+                if isinstance(model, sklearn.linear_model.Ridge):
+                    penalty_hessian[:-1, :-1] = model.alpha * np.eye(mask.sum())
+                elif isinstance(model, sklearn.linear_model.ElasticNet):
+                    penalty_hessian[:-1, :-1] = (
+                        sample_weight.sum()
+                        * model.alpha
+                        * (1.0 - model.l1_ratio)
+                        * np.eye(mask.sum())
+                    )
+
+                expected = utils.to_tensor(
+                    design
+                    @ np.linalg.solve(
+                        design.T @ (sample_weight[:, None] * design)
+                        + penalty_hessian,
+                        design.T * sample_weight[None, :],
+                    )
+                )
+                actual = self.get_randalo_jac(model)
+                actual_weighted = (
+                    RandALO.from_sklearn(
+                        model,
+                        self.X,
+                        self.y,
+                        sample_weight=sample_weight,
+                    )._jac
+                    @ torch.eye(self.n)
+                )
+                self.assertFalse(torch.allclose(expected, actual, atol=1e-5))
+                self.assertTrue(torch.allclose(expected, actual_weighted, atol=1e-5))
+
+    def test_positive_linear_regression(self):
+        X = np.abs(self.X)
+        y = X[:, :3].sum(axis=1) - 0.25 * X[:, 3]
+        model = sklearn.linear_model.LinearRegression(
+            fit_intercept=False, positive=True
+        ).fit(X, y)
+        mask = model.coef_ > 1e-6
+        Q, _ = np.linalg.qr(X[:, mask])
+        expected = utils.to_tensor(Q @ Q.T)
+        actual = RandALO.from_sklearn(model, X, y)._jac @ torch.eye(self.n)
+        self.assertTrue(torch.allclose(expected, actual, atol=1e-6))
+
+    def test_sparse_design(self):
+        X_sparse = scipy.sparse.csr_matrix(self.X)
+        model = sklearn.linear_model.Ridge(alpha=0.5, fit_intercept=False).fit(
+            X_sparse, self.y
+        )
+        expected = utils.to_tensor(
+            self.X
+            @ np.linalg.solve(
+                self.X.T @ self.X + model.alpha * np.eye(self.p), self.X.T
+            )
+        )
+        actual = RandALO.from_sklearn(model, X_sparse, self.y)._jac @ torch.eye(
+            self.n
+        )
+        self.assertTrue(torch.allclose(expected, actual, atol=1e-6))
 
     def test_lasso(self):
         # get a path of parameters and shrink a bit so we aren't at the max
@@ -207,7 +296,11 @@ class TestSklearnRandALO(unittest.TestCase):
             {"penalty": "elasticnet", "C": 1.0, "l1_ratio": 0.5, "eye_scale": 0.5},
         ]
         lr = sklearn.linear_model.LogisticRegression(
-            tol=1e-5, solver="saga", max_iter=100000, fit_intercept=False
+            tol=1e-5,
+            solver="saga",
+            max_iter=100000,
+            fit_intercept=False,
+            random_state=0,
         )
 
         y = utils.to_tensor(self.y_bin * 2 - 1)
@@ -255,6 +348,128 @@ class TestSklearnRandALO(unittest.TestCase):
                 )
             )
             self.assertFalse(torch.allclose(jac_bad, ra_jac, atol=atol))
+
+    def test_weighted_logistic_intercepts(self):
+        sample_weight = np.linspace(0.5, 1.5, self.n)
+        y_labels = np.array(["a", "b"])[self.y_bin]
+        class_weight = {"a": 0.75, "b": 1.25}
+
+        cases = [
+            sklearn.linear_model.LogisticRegression(
+                C=0.8,
+                class_weight=class_weight,
+                fit_intercept=True,
+                solver="lbfgs",
+                tol=1e-10,
+                max_iter=10000,
+            ),
+            sklearn.linear_model.LogisticRegression(
+                C=0.8,
+                class_weight=class_weight,
+                fit_intercept=True,
+                intercept_scaling=2.5,
+                solver="liblinear",
+                tol=1e-10,
+                max_iter=10000,
+            ),
+        ]
+
+        encoded_y = utils.to_tensor(self.y_bin * 2 - 1)
+        for model in cases:
+            with self.subTest(solver=model.solver):
+                model.fit(self.X, y_labels, sample_weight=sample_weight)
+                intercept_scale = (
+                    model.intercept_scaling if model.solver == "liblinear" else 1.0
+                )
+                design = np.column_stack(
+                    (self.X, np.full(self.n, intercept_scale))
+                )
+                y_hat = utils.to_tensor(model.decision_function(self.X))
+                derivatives = utils.compute_derivatives(
+                    ml.LogisticLoss(), encoded_y, y_hat
+                )
+
+                effective_weight = sample_weight * np.where(
+                    self.y_bin == 1, class_weight["b"], class_weight["a"]
+                )
+                normalized_weight = effective_weight * self.n / effective_weight.sum()
+                hessian = np.diag(
+                    np.r_[
+                        np.full(self.p, 1.0 / (model.C * effective_weight.sum())),
+                        (
+                            1.0 / (model.C * effective_weight.sum())
+                            if model.solver == "liblinear"
+                            else 0.0
+                        ),
+                    ]
+                )
+                d2loss_dy_hat2 = (
+                    normalized_weight * derivatives.d2loss_dy_hat2.numpy()
+                )
+                d2loss_dboth = normalized_weight * derivatives.d2loss_dboth.numpy()
+                expected = utils.to_tensor(
+                    -design
+                    @ np.linalg.solve(
+                        design.T @ (d2loss_dy_hat2[:, None] * design) + hessian,
+                        design.T * d2loss_dboth[None, :],
+                    )
+                )
+                actual = (
+                    RandALO.from_sklearn(
+                        model,
+                        self.X,
+                        y_labels,
+                        sample_weight=sample_weight,
+                    )._jac
+                    @ torch.eye(self.n)
+                )
+                self.assertTrue(torch.allclose(expected, actual, atol=1e-5))
+
+        balanced_model = sklearn.linear_model.LogisticRegression(
+            C=0.8,
+            class_weight="balanced",
+            fit_intercept=False,
+            max_iter=10000,
+        ).fit(self.X, y_labels, sample_weight=sample_weight)
+        balanced_alo = RandALO.from_sklearn(
+            balanced_model,
+            self.X,
+            y_labels,
+            sample_weight=sample_weight,
+        )
+        class_weights = sklearn.utils.class_weight.compute_class_weight(
+            "balanced",
+            classes=balanced_model.classes_,
+            y=y_labels,
+            sample_weight=sample_weight,
+        )
+        effective_weight = sample_weight * np.where(
+            self.y_bin == 1, class_weights[1], class_weights[0]
+        )
+        expected_weight = effective_weight * self.n / effective_weight.sum()
+        self.assertTrue(
+            torch.allclose(
+                balanced_alo._loss.sample_weight,
+                torch.as_tensor(expected_weight),
+            )
+        )
+
+    def test_validation_errors(self):
+        with self.assertRaisesRegex(TypeError, "Unsupported scikit-learn estimator"):
+            RandALO.from_sklearn(sklearn.base.BaseEstimator(), self.X, self.y)
+
+        multi_y = np.column_stack((self.y, self.y))
+        multi_model = sklearn.linear_model.LinearRegression().fit(self.X, multi_y)
+        with self.assertRaisesRegex(ValueError, "one-dimensional targets"):
+            RandALO.from_sklearn(multi_model, self.X, multi_y)
+
+        lars = sklearn.linear_model.LassoLars(fit_intercept=False).fit(
+            self.X, self.y
+        )
+        with self.assertRaisesRegex(ValueError, "does not support sample_weight"):
+            RandALO.from_sklearn(
+                lars, self.X, self.y, sample_weight=np.ones(self.n)
+            )
 
 
 if __name__ == "__main__":
