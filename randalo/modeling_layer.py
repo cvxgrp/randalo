@@ -28,7 +28,7 @@ cp = _CVXPYProxy()
 
 @dataclass
 class HyperParameter:
-    parameter: object = field(default_factory=lambda: cp.Parameter())
+    parameter: object = field(default_factory=lambda: cp.Parameter(nonneg=True))
     scale: float = field(init=False, default=1.0)
 
     def __mul__(self, r):
