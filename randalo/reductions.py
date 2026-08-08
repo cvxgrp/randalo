@@ -5,6 +5,7 @@ import warnings
 
 import numpy as np
 import linops as lo
+from linops.minres import minres
 import scipy.sparse
 import scipy.sparse.linalg
 import torch
@@ -15,6 +16,27 @@ from . import utils
 
 def _to_numpy(tensor):
     return tensor.detach().cpu().numpy()
+
+
+def _solve_cholesky(matrix, rhs):
+    factor = torch.linalg.cholesky(matrix, upper=True)
+    return torch.linalg.solve_triangular(
+        factor,
+        torch.linalg.solve_triangular(
+            factor.T, rhs, upper=False
+        ),
+        upper=True,
+    )
+
+
+def _solve_minres(matrix, rhs):
+    return torch.stack(
+        [
+            minres(matrix, column, tol=1e-6, verbose=False)
+            for column in rhs.T
+        ],
+        dim=1,
+    )
 
 
 def _sparse_regularizer_parts(regularizer, beta_hat, epsilon=1e-6):
@@ -139,6 +161,14 @@ class Jacobian(lo.LinearOperator):
 
     def __init__(self, y, X, solution_func, loss, regularizer, inverse_method=None):
         super().__init__()
+        if inverse_method not in (None, "minres", "cholesky"):
+            raise ValueError(
+                "inverse_method must be None, 'minres', or 'cholesky'"
+            )
+        if scipy.sparse.issparse(X) and inverse_method is not None:
+            raise ValueError(
+                "inverse_method is only supported for dense design matrices"
+            )
         self.solution_func = solution_func
         self.loss = loss
         self.regularizer = regularizer
@@ -186,6 +216,18 @@ class Jacobian(lo.LinearOperator):
         rhs_scaled = -d2loss_dboth[:, None] * rhs
 
         if constraints is None and hessians is None:
+            if self.inverse_method is not None:
+                system = X_mask.T @ (
+                    d2loss_dy_hat2[:, None] * X_mask
+                )
+                system_rhs = X_mask.T @ rhs_scaled
+                if self.inverse_method == "minres":
+                    v = _solve_minres(system, system_rhs)
+                else:
+                    v = _solve_cholesky(system, system_rhs)
+                out = X_mask @ v
+                return out if not needs_squeeze else out.squeeze(-1)
+
             if torch.any(d2loss_dy_hat2 == 0):
                 # The weighted-QR identity below contains D^{-1/2}. A zero
                 # sample weight makes that expression undefined even though
@@ -224,10 +266,10 @@ class Jacobian(lo.LinearOperator):
             else:
                 hessians_mask = hessians
             P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask) + hessians_mask
-            R = torch.linalg.cholesky(P, upper=True)
-            v = torch.linalg.solve_triangular(
-                R, torch.linalg.solve_triangular(R.T, kkt_rhs, upper=False), upper=True
-            )
+            if self.inverse_method == "minres":
+                v = _solve_minres(P, kkt_rhs)
+            else:
+                v = _solve_cholesky(P, kkt_rhs)
         else:
             if mask is not None:
                 constraints_mask = constraints[:, mask]
@@ -264,8 +306,22 @@ class Jacobian(lo.LinearOperator):
                 ),
                 dim=0,
             )
-            solution = torch.linalg.lstsq(kkt_matrix, full_rhs).solution
-            v = solution[: X_mask.shape[1]]
+            if self.inverse_method == "minres":
+                solution = _solve_minres(kkt_matrix, full_rhs)
+                v = solution[: X_mask.shape[1]]
+            elif self.inverse_method == "cholesky":
+                inverse_rhs = _solve_cholesky(P, kkt_rhs)
+                inverse_constraints = _solve_cholesky(
+                    P, constraints_mask.T
+                )
+                schur = constraints_mask @ inverse_constraints
+                multipliers = _solve_cholesky(
+                    schur, constraints_mask @ inverse_rhs
+                )
+                v = inverse_rhs - inverse_constraints @ multipliers
+            else:
+                solution = torch.linalg.lstsq(kkt_matrix, full_rhs).solution
+                v = solution[: X_mask.shape[1]]
         out = X_mask @ v
         return out if not needs_squeeze else out.squeeze(-1)
 
