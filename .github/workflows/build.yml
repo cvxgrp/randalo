@@ -2,6 +2,10 @@ name: Publish Python 🐍 distribution 📦 to PyPI
 
 on:
   push:
+    branches:
+      - main
+    tags:
+      - "*"
   pull_request:
 
 jobs:
