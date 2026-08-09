@@ -223,34 +223,74 @@ class L2Regularizer(Regularizer):
                 mask = torch.zeros_like(beta_hat, dtype=bool)
                 return None, None, mask
 
-            tilde_beta_hat_2d = torch.atleast_2d(beta_hat).T / norm
-            hessian = self._scale() * (torch.eye(beta_hat.shape) - beta_hat_2d @ beta_hat_2d.T)
+            unit_beta = beta_hat / norm
+            identity = torch.eye(
+                beta_hat.numel(), dtype=beta_hat.dtype, device=beta_hat.device
+            )
+            hessian = self._scale() / norm * (
+                identity - torch.outer(unit_beta, unit_beta)
+            )
             return None, hessian, None
         elif isinstance(linear, list):
-            norm = torch.linalg.norm(beta_hat[linear])
+            indices = torch.as_tensor(
+                linear, dtype=torch.long, device=beta_hat.device
+            )
+            norm = torch.linalg.norm(beta_hat[indices])
             if norm <= epsilon:
                 mask = torch.ones_like(beta_hat, dtype=bool)
-                mask[linear] = False
+                mask[indices] = False
                 return None, None, mask
-            tilde_b = torch.atleast_2d(torch.zeros_like(beta_hat)).T / norm
-            tilde_b[linear] = beta_hat[linear]
-            diag = torch.zero_like(beta_hat)
-            diag[linear] = 1.0
-            return None, self._scale() * (torch.diag(diag) - tilde_b @ tilde_b.T), None
+            unit_beta = torch.zeros_like(beta_hat)
+            unit_beta[indices] = beta_hat[indices] / norm
+            diagonal = torch.zeros_like(beta_hat)
+            diagonal[indices] = 1.0
+            hessian = self._scale() / norm * (
+                torch.diag(diagonal) - torch.outer(unit_beta, unit_beta)
+            )
+            return None, hessian, None
 
         else:
+            linear = torch.as_tensor(
+                linear, dtype=beta_hat.dtype, device=beta_hat.device
+            )
             Lb = linear @ beta_hat
             norm = torch.linalg.norm(Lb)
-            tilde_Lb = torch.atleast_2d(Lb).T / norm
-            if Lb <= epsilon:
+            if norm <= epsilon:
                 return linear, None, None
-            return None, self._scale() * linear.T @ (
-                    torch.eye(Lb.shape[0]) - Lb_2d @ Lb_2d.T) @ linear, None
+            unit_Lb = Lb / norm
+            identity = torch.eye(
+                Lb.numel(), dtype=Lb.dtype, device=Lb.device
+            )
+            hessian = self._scale() / norm * linear.T @ (
+                identity - torch.outer(unit_Lb, unit_Lb)
+            ) @ linear
+            return None, hessian, None
 
 
 class HuberRegularizer(Regularizer):
     def to_cvxpy(self, variable):
-        super().to_cvxpy(variable, cp.huber)
+        return super().to_cvxpy(variable, lambda value: cp.sum(cp.huber(value)))
+
+    def get_constraint_hessian_mask(self, beta_hat, epsilon=1e-6):
+        scale = self._scale()
+        if self.linear is None:
+            diagonal = 2 * scale * (torch.abs(beta_hat) < 1 - epsilon)
+            return None, torch.diag(diagonal.to(beta_hat.dtype)), None
+        if isinstance(self.linear, list):
+            indices = torch.as_tensor(
+                self.linear, dtype=torch.long, device=beta_hat.device
+            )
+            diagonal = torch.zeros_like(beta_hat)
+            quadratic = torch.abs(beta_hat[indices]) < 1 - epsilon
+            diagonal[indices] = 2 * scale * quadratic.to(beta_hat.dtype)
+            return None, torch.diag(diagonal), None
+
+        linear = torch.as_tensor(
+            self.linear, dtype=beta_hat.dtype, device=beta_hat.device
+        )
+        quadratic = torch.abs(linear @ beta_hat) < 1 - epsilon
+        active_linear = linear[quadratic]
+        return None, 2 * scale * active_linear.T @ active_linear, None
 
 
 @dataclass
