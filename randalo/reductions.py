@@ -33,6 +33,7 @@ class Jacobian(lo.LinearOperator):
     supports_operator_matrix = True
 
     def __init__(self, y, X, solution_func, loss, regularizer, inverse_method=None):
+        super().__init__()
         self.solution_func = solution_func
         self.loss = loss
         self.regularizer = regularizer
@@ -73,12 +74,36 @@ class Jacobian(lo.LinearOperator):
         rhs_scaled = -d2loss_dboth[:, None] * rhs
 
         if constraints is None and hessians is None:
-            sqrt_d2loss_dy_hat2 = torch.sqrt(d2loss_dy_hat2)[:, None]
-            tilde_X = sqrt_d2loss_dy_hat2 * X_mask
+            if torch.any(d2loss_dy_hat2 == 0):
+                # The weighted-QR identity below contains D^{-1/2}. A zero
+                # sample weight makes that expression undefined even though
+                # the original normal equations remain well-defined.
+                P = X_mask.T @ (d2loss_dy_hat2[:, None] * X_mask)
+                v = torch.linalg.lstsq(P, X_mask.T @ rhs_scaled).solution
+                out = X_mask @ v
+                return out if not needs_squeeze else out.squeeze(-1)
+
+            work_dtype = X_mask.dtype
+            sqrt_d2loss_dy_hat2 = torch.sqrt(d2loss_dy_hat2)
+            dynamic_range = (
+                sqrt_d2loss_dy_hat2.max() / sqrt_d2loss_dy_hat2.min()
+            )
+            if X_mask.dtype == torch.float32 and dynamic_range > 1e4:
+                # Nearly separable unregularized logistic fits can have loss
+                # curvature spanning many orders of magnitude. Float32 QR is
+                # not accurate enough after the D^{-1/2} rescaling.
+                work_dtype = torch.float64
+
+            X_work = X_mask.to(work_dtype)
+            rhs_work = rhs_scaled.to(work_dtype)
+            sqrt_d2loss_dy_hat2 = sqrt_d2loss_dy_hat2.to(work_dtype)[:, None]
+            tilde_X = sqrt_d2loss_dy_hat2 * X_work
             Q, _ = torch.linalg.qr(tilde_X)
-            return (
-                Q @ (Q.T @ (rhs_scaled / sqrt_d2loss_dy_hat2))
+            out = (
+                Q @ (Q.T @ (rhs_work / sqrt_d2loss_dy_hat2))
             ) / sqrt_d2loss_dy_hat2
+            out = out.to(X_mask.dtype)
+            return out if not needs_squeeze else out.squeeze(-1)
         elif constraints is None:
             # TODO: double check this doesn't need additional scaling
             kkt_rhs = X_mask.T @ rhs_scaled

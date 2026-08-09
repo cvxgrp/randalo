@@ -1,3 +1,42 @@
 [build-system]
-requires = ["setuptools >= 18.0", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "randalo"
+version = "0.1.0"
+description = "Fast randomized risk estimation for high-dimensional data"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Parth Nobel", email = "parthnobel@berkeley.edu" },
+    { name = "Daniel LeJeune", email = "daniel@dlej.net" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "numpy>=1.17.5",
+    "scipy",
+    "scikit-learn",
+    "torch",
+    "torch-linops",
+]
+
+[project.optional-dependencies]
+cvxpy = [
+    "cvxpy",
+]
+test = [
+    "cvxpy",
+    "cvxpylayers",
+    "pytest",
+]
+
+[project.urls]
+Homepage = "https://github.com/cvxgrp/randalo"
+
+[tool.setuptools.packages.find]
+include = ["randalo*"]

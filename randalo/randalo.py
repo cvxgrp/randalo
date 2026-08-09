@@ -16,7 +16,7 @@ class RandALO(object):
         self,
         loss: ml.Loss = None,
         jac: lo.LinearOperator = None,
-        y: torch.Tensor | np.ndarray = None,
+        y: torch.Tensor | np.ndarray | list = None,
         y_hat: torch.Tensor | np.ndarray = None,
         dtype: torch.dtype = torch.float32,
         device: torch.device = None,
@@ -320,6 +320,7 @@ class RandALO(object):
         model: sklearn.base.BaseEstimator = None,
         X: torch.Tensor | np.ndarray = None,
         y: torch.Tensor | np.ndarray = None,
+        sample_weight: torch.Tensor | np.ndarray | list | float = None,
     ) -> "RandALO":
         """Instantiate a RandALO object from a scikit-learn model.
 
@@ -334,11 +335,17 @@ class RandALO(object):
             The training data that the model was fitted on.
         y : torch.Tensor | np.ndarray | list
             The training labels that the model was fitted on.
+        sample_weight : torch.Tensor | np.ndarray | list | float, optional
+            The sample weights that were passed to ``model.fit``. Scikit-learn
+            does not retain fit-time sample weights, so weighted fits must pass
+            them again here.
 
         Returns
         -------
         RandALO
             The instantiated RandALO object.
         """
-        loss, jac, y, y_hat = ski.map_sklearn(model, X, y)
+        loss, jac, y, y_hat = ski.map_sklearn(
+            model, X, y, sample_weight=sample_weight
+        )
         return cls(loss=loss, jac=jac, y=y, y_hat=y_hat)
