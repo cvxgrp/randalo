@@ -27,23 +27,15 @@ class TestReductions(unittest.TestCase):
             y,
             b,
         )
-        jacobian = reductions.Jacobian(
-            self.y,
-            self.X,
-            lambda: b.value,
-            self.loss,
-            self.regularizer,
-            inverse_method="cholesky",
-        )
         _, generated_jacobian = reductions.gen_cvxpy_jacobian(
             self.loss,
             self.regularizer,
             self.X,
             b,
             self.y,
-            inversion_method="cholesky",
+            inversion_method="minres",
         )
-        self.assertEqual(generated_jacobian.inverse_method, "cholesky")
+        self.assertEqual(generated_jacobian.inverse_method, "minres")
 
         solve_options = {
             "solver": "CLARABEL",
@@ -54,8 +46,6 @@ class TestReductions(unittest.TestCase):
         y.value = self.y
         prob.solve(**solve_options)
         direction = self.rng.standard_normal(self.n)
-        actual = jacobian @ direction
-
         epsilon = 1e-4
         predictions = []
         for sign in (-1, 1):
@@ -66,7 +56,42 @@ class TestReductions(unittest.TestCase):
             (predictions[1] - predictions[0]) / (2 * epsilon),
             dtype=torch.float32,
         )
-        self.assertTrue(torch.allclose(actual, expected, atol=1e-3, rtol=1e-2))
+        y.value = self.y
+        prob.solve(**solve_options)
+        for inverse_method in (None, "cholesky", "minres"):
+            with self.subTest(inverse_method=inverse_method):
+                jacobian = reductions.Jacobian(
+                    self.y,
+                    self.X,
+                    lambda: b.value,
+                    self.loss,
+                    self.regularizer,
+                    inverse_method=inverse_method,
+                )
+                actual = jacobian @ direction
+                self.assertTrue(
+                    torch.allclose(actual, expected, atol=1e-3, rtol=1e-2)
+                )
+
+        with self.assertRaisesRegex(ValueError, "inverse_method"):
+            reductions.Jacobian(
+                self.y,
+                self.X,
+                lambda: b.value,
+                self.loss,
+                self.regularizer,
+                inverse_method="unknown",
+            )
+
+        with self.assertRaisesRegex(ValueError, "dense design matrices"):
+            reductions.Jacobian(
+                self.y,
+                scipy.sparse.csr_matrix(self.X),
+                lambda: b.value,
+                self.loss,
+                self.regularizer,
+                inverse_method="minres",
+            )
 
     def test_constrained_jacobian(self):
         rng = np.random.default_rng(13)
@@ -108,14 +133,24 @@ class TestReductions(unittest.TestCase):
 
         y.value = y_value
         problem.solve(**solve_options)
-        for design in (X, scipy.sparse.csr_matrix(X)):
-            with self.subTest(sparse=scipy.sparse.issparse(design)):
+        cases = [
+            (X, None),
+            (X, "cholesky"),
+            (X, "minres"),
+            (scipy.sparse.csr_matrix(X), None),
+        ]
+        for design, inverse_method in cases:
+            with self.subTest(
+                sparse=scipy.sparse.issparse(design),
+                inverse_method=inverse_method,
+            ):
                 jacobian = reductions.Jacobian(
                     y_value,
                     design,
                     lambda: variable.value,
                     ml.MSELoss(),
                     regularizer,
+                    inverse_method=inverse_method,
                 )
                 actual = jacobian @ direction
                 self.assertTrue(
