@@ -1,3 +1,4 @@
+import inspect
 import unittest
 from unittest import mock
 
@@ -7,13 +8,48 @@ import scipy.special
 import scipy.sparse
 import sklearn.base
 import sklearn.linear_model
-import sklearn.linear_model._coordinate_descent
 import sklearn.utils.class_weight
 import torch
 
 from randalo import RandALO
 from randalo import modeling_layer as ml
 from randalo import utils
+
+
+def _alpha_path(X, y, *, l1_ratio, n_alphas=10):
+    alpha_max = np.linalg.norm(X.T @ y, ord=np.inf) / (
+        X.shape[0] * l1_ratio
+    )
+    return 0.99 * np.geomspace(alpha_max, alpha_max * 1e-3, n_alphas)
+
+
+def _logistic_test_cases():
+    penalty_default = inspect.signature(
+        sklearn.linear_model.LogisticRegression
+    ).parameters["penalty"].default
+    if penalty_default == "deprecated":
+        return [
+            {
+                "C": np.inf,
+                "l1_ratio": 0.0,
+                "eye_scale": 0.0,
+                "unregularized": True,
+            },
+            {"C": 1.0, "l1_ratio": 1.0, "eye_scale": 0.0},
+            {"C": 1.0, "l1_ratio": 0.0, "eye_scale": 1.0},
+            {"C": 1.0, "l1_ratio": 0.5, "eye_scale": 0.5},
+        ]
+    return [
+        {"penalty": None, "eye_scale": 0.0, "unregularized": True},
+        {"penalty": "l1", "C": 1.0, "eye_scale": 0.0},
+        {"penalty": "l2", "C": 1.0, "eye_scale": 1.0},
+        {
+            "penalty": "elasticnet",
+            "C": 1.0,
+            "l1_ratio": 0.5,
+            "eye_scale": 0.5,
+        },
+    ]
 
 
 class TestSklearnRandALO(unittest.TestCase):
@@ -229,16 +265,7 @@ class TestSklearnRandALO(unittest.TestCase):
 
     def test_lasso(self):
         # get a path of parameters and shrink a bit so we aren't at the max
-        alphas = (
-            sklearn.linear_model._coordinate_descent._alpha_grid(
-                self.X,
-                self.y,
-                fit_intercept=False,
-                l1_ratio=1.0,
-                n_alphas=10,
-            )
-            * 0.99
-        )
+        alphas = _alpha_path(self.X, self.y, l1_ratio=1.0)
 
         # store the unique numbers of nonzeros over the alphas
         nnzs = set()
@@ -280,16 +307,7 @@ class TestSklearnRandALO(unittest.TestCase):
     def test_elastic_net(self):
         # get a path of parameters and shrink a bit
         l1_ratio = 0.5
-        alphas = (
-            sklearn.linear_model._coordinate_descent._alpha_grid(
-                self.X,
-                self.y,
-                fit_intercept=False,
-                l1_ratio=l1_ratio,
-                n_alphas=10,
-            )
-            * 0.99
-        )
+        alphas = _alpha_path(self.X, self.y, l1_ratio=l1_ratio)
 
         # store the unique numbers of nonzeros over the alphas
         nnzs = set()
@@ -325,12 +343,6 @@ class TestSklearnRandALO(unittest.TestCase):
         self.assertTrue(len(nnzs) > 3)
 
     def test_logistic(self):
-        param_dicts = [
-            {"penalty": None, "eye_scale": 0.0},
-            {"penalty": "l1", "C": 1.0, "eye_scale": 0.0},
-            {"penalty": "l2", "C": 1.0, "eye_scale": 1.0},
-            {"penalty": "elasticnet", "C": 1.0, "l1_ratio": 0.5, "eye_scale": 0.5},
-        ]
         lr = sklearn.linear_model.LogisticRegression(
             tol=1e-5,
             solver="saga",
@@ -343,8 +355,10 @@ class TestSklearnRandALO(unittest.TestCase):
         y_labels = np.array(["a", "b"])[self.y_bin]
         nnzs = set()
 
-        for param_dict in param_dicts:
+        for test_case in _logistic_test_cases():
+            param_dict = test_case.copy()
             eye_scale = param_dict.pop("eye_scale")
+            unregularized = param_dict.pop("unregularized", False)
             lr.set_params(**param_dict)
             lr.fit(self.X, y_labels)
 
@@ -367,7 +381,7 @@ class TestSklearnRandALO(unittest.TestCase):
                 )
             )
             ra_jac = self.get_randalo_jac(lr, y=y_labels)
-            atol = 1e-2 if param_dict["penalty"] is None else 1e-6
+            atol = 1e-2 if unregularized else 1e-6
             self.assertTrue(torch.allclose(jac, ra_jac, atol=atol))
 
             # check that wrong y = wrong Jacobian
