@@ -165,7 +165,6 @@ class ATD1APlusD2(ScipyLinearOperator):
 
 
 class SeparableRegularizerJacobian(LinearOperator):
-
     # supports_operator_matrix = True
     @property
     def supports_operator_matrix(self):
@@ -179,6 +178,7 @@ class SeparableRegularizerJacobian(LinearOperator):
         reg_hessian_diag,
         use_direct_method=None,
     ):
+        super().__init__()
         n = X.shape[0]
         self._shape = (n, n)
 
@@ -325,7 +325,6 @@ class LinearSeparableRegularizerJacobian(LinearOperator):
 
 
 class RandomForestRegressorJacobian(LinearOperator):
-
     supports_operator_matrix = True
 
     def __init__(self, forest, X, dtype, device="cpu"):
@@ -382,7 +381,6 @@ class SeparableRegularizerMixin(ABC):
 
 
 class LinearSeparableRegularizerMixin(ABC):
-
     @property
     @abstractmethod
     def reg_hessian_diag_(self):
@@ -660,7 +658,6 @@ class KernelLogisticRegression(BaseEstimator):
 
 
 class KernelRidgeJacobian(LinearOperator):
-
     supports_operator_matrix = True
 
     def __init__(
@@ -717,7 +714,6 @@ class KernelRidgeJacobian(LinearOperator):
 
 
 class KernelLogisticModel(ALOModel):
-
     def __init__(self, lamda, kernel_logistic_kwargs):
         super().__init__()
         self.lamda = lamda
@@ -746,7 +742,6 @@ class KernelLogisticModel(ALOModel):
 
 
 class RandomForestRegressorModel(ALOModel):
-
     def __init__(self, sklearn_rf_kwargs):
         super().__init__()
         self.sklearn_rf_kwargs = sklearn_rf_kwargs

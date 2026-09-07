@@ -156,7 +156,6 @@ class ALOExact(ALOBase):
 
 
 class RandomizedMixin(ABC):
-
     n: int
     _jac: LinearOperator
     _generator: torch.Generator

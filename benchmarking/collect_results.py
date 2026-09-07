@@ -1567,18 +1567,18 @@ def bks_viz():
     n = 200
     p = 150
     m = 10
-    n_trials = 1000
+    n_trials = 100
     lamda = n
 
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
     rng = np.random.default_rng(0)
     Z = rng.integers(0, 2, size=(n, p)) * 2 - 1
-    sample_scales = np.ones(n)
+    sample_scales = np.ones(n) * 0.2
     # sample_scales += np.arange(1, n + 1) / n
-    sample_scales[n // 4 :] = 2
-    sample_scales[n // 2 :] = 3
-    sample_scales[n // 4 * 3 :] = 4
+    sample_scales[n // 3 :] = 1
+    sample_scales[n // 3 * 2 :] = 5
+    # sample_scales[n // 4 * 3 :] = 10
     feature_scales = np.ones(p)
     feature_scales[p // 2 :] = 2
     X = Z * sample_scales[:, None] * feature_scales[None, :]
@@ -1599,12 +1599,13 @@ def bks_viz():
 
     ax = axes[0]
 
-    xs = np.linspace(np.min(mu), np.max(mu), 100)
-    bins = np.linspace(np.min(mu), np.max(mu), 50)
+    xs = np.linspace(np.min(mu), np.max(mu), 1000)
+    j_bins = np.linspace(np.min(mu), np.max(mu), 50)
+    mu_bins = np.linspace(np.min(mu), np.max(mu), 100)
 
     ax.hist(
         bks_means,
-        bins=bins,
+        bins=j_bins,
         density=True,
         alpha=0.5,
         label="$\\tilde{J}_{ii}$",
@@ -1612,7 +1613,7 @@ def bks_viz():
     )
     ax.hist(
         mu.ravel(),
-        bins=bins,
+        bins=mu_bins,
         density=True,
         alpha=0.5,
         label="$\\mu_i$",
@@ -1639,7 +1640,7 @@ def bks_viz():
     z_scores_marginal = z_scores.ravel()
 
     zs = np.linspace(-3.5, 3.5, 100)
-    bins = np.linspace(-3.5, 3.5, 50)
+    bins = np.linspace(-3.5, 3.5, 100)
     ax.hist(z_scores_marginal, bins=bins, density=True, alpha=0.5, label="$z$-scores")
     ax.plot(zs, stats.norm.pdf(zs), label="$\\mathcal{N}(0, 1)$")
     ax.legend()

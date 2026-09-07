@@ -45,8 +45,13 @@ def weighted_lstsq_fit(x, y, order: int, cov):
     # cannot apply a similar trick here :( have to factor this directly
 
     # Disabled weighted least squares because of numerical issues for now
-    X = np.vander(x, order + 1, True)
-    w = np.linalg.lstsq(X, y, rcond=None)[0]
+    X = np.vander(x, order + 1, True).T
+    a = np.zeros(order + 1)
+    a[0] = 1
+    w = np.linalg.lstsq(X, a, rcond=None)[0]
+    return y @ w
+
+    # w = np.linalg.lstsq(X, y, rcond=None)[0]
     # L = np.linalg.solve(X.T @ X, X.T)
     # w2 = L @ y
 
@@ -209,7 +214,6 @@ def jvp_generalized_hessian(X, l_diag, D, r_diag, Z):
 
 
 class FixedIntegrator(ABC):
-
     def __init__(self):
         self.weights = np.ones(1)
         self.points = np.zeros(1)
@@ -220,7 +224,6 @@ class FixedIntegrator(ABC):
 
 
 class GaussianGridIntegrator(FixedIntegrator):
-
     def __init__(self, Sigma=None, mu=None, n_samples_per_dim=100, b=5):
 
         self.A = _get_gaussian_transform_matrix(Sigma)
@@ -253,7 +256,6 @@ class GaussianGridIntegrator(FixedIntegrator):
 
 
 class GaussHermiteIntegrator(FixedIntegrator):
-
     def __init__(self, Sigma=None, mu=None, deg=20):
 
         self.A = _get_gaussian_transform_matrix(Sigma)
