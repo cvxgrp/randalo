@@ -31,7 +31,6 @@ cvxpy = [
 ]
 test = [
     "cvxpy",
-    "cvxpylayers",
     "pytest",
 ]
 
