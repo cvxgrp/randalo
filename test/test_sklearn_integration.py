@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 import numpy as np
 import scipy
@@ -175,13 +176,56 @@ class TestSklearnRandALO(unittest.TestCase):
         actual = RandALO.from_sklearn(model, X, y)._jac @ torch.eye(self.n)
         self.assertTrue(torch.allclose(expected, actual, atol=1e-6))
 
-    def test_sparse_design_is_rejected(self):
+    def test_sparse_design(self):
+        for sparse_type in (scipy.sparse.csr_matrix, scipy.sparse.csc_matrix):
+            with self.subTest(sparse_type=sparse_type.__name__):
+                X_sparse = sparse_type(self.X)
+                model = sklearn.linear_model.Ridge(alpha=0.5).fit(
+                    X_sparse, self.y
+                )
+                design = np.column_stack((self.X, np.ones(self.n)))
+                penalty = np.diag(np.r_[np.full(self.p, model.alpha), 0.0])
+                expected = utils.to_tensor(
+                    design
+                    @ np.linalg.solve(
+                        design.T @ design + penalty, design.T
+                    )
+                )
+                alo = RandALO.from_sklearn(model, X_sparse, self.y)
+                self.assertTrue(scipy.sparse.issparse(alo._jac.X))
+                with mock.patch.object(
+                    scipy.sparse.csr_matrix,
+                    "toarray",
+                    side_effect=AssertionError("design matrix was densified"),
+                ):
+                    actual = alo._jac @ torch.eye(self.n)
+                self.assertTrue(torch.allclose(expected, actual, atol=1e-6))
+
+    def test_sparse_active_set_with_zero_sample_weight(self):
         X_sparse = scipy.sparse.csr_matrix(self.X)
-        model = sklearn.linear_model.Ridge(alpha=0.5, fit_intercept=False).fit(
-            X_sparse, self.y
+        sample_weight = np.linspace(0.0, 2.0, self.n)
+        model = sklearn.linear_model.Lasso(
+            alpha=0.1, tol=1e-10, max_iter=100000
+        ).fit(X_sparse, self.y, sample_weight=sample_weight)
+
+        dense = (
+            RandALO.from_sklearn(
+                model, self.X, self.y, sample_weight=sample_weight
+            )._jac
+            @ torch.eye(self.n)
         )
-        with self.assertRaisesRegex(TypeError, "Sparse data was passed"):
-            RandALO.from_sklearn(model, X_sparse, self.y)
+        with mock.patch.object(
+            scipy.sparse.csr_matrix,
+            "toarray",
+            side_effect=AssertionError("design matrix was densified"),
+        ):
+            sparse = (
+                RandALO.from_sklearn(
+                    model, X_sparse, self.y, sample_weight=sample_weight
+                )._jac
+                @ torch.eye(self.n)
+            )
+        self.assertTrue(torch.allclose(dense, sparse, atol=2e-4))
 
     def test_lasso(self):
         # get a path of parameters and shrink a bit so we aren't at the max

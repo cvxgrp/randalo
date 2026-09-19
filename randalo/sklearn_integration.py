@@ -114,7 +114,11 @@ def _design_and_solution(model, X, *, logistic=False):
             f"{coef.shape[0]} coefficients."
         )
 
-    X = np.asarray(X, dtype=np.result_type(X.dtype, coef.dtype, float))
+    dtype = np.result_type(X.dtype, coef.dtype, float)
+    if scipy.sparse.issparse(X):
+        X = X.astype(dtype, copy=False)
+    else:
+        X = np.asarray(X, dtype=dtype)
     penalized = list(range(X.shape[1]))
     if not model.fit_intercept:
         return X, coef.copy(), penalized
@@ -127,9 +131,14 @@ def _design_and_solution(model, X, *, logistic=False):
         intercept_scale = float(model.intercept_scaling)
         penalized.append(X.shape[1])
 
-    X = np.column_stack(
-        (X, np.full(X.shape[0], intercept_scale, dtype=X.dtype))
-    )
+    intercept_column = np.full(X.shape[0], intercept_scale, dtype=X.dtype)
+    if scipy.sparse.issparse(X):
+        X = scipy.sparse.hstack(
+            (X, scipy.sparse.csr_matrix(intercept_column[:, None])),
+            format="csr",
+        )
+    else:
+        X = np.column_stack((X, intercept_column))
     solution = np.concatenate((coef, [intercept / intercept_scale]))
     return X, solution, penalized
 
@@ -189,7 +198,7 @@ def map_sklearn(
     model : sklearn.base.BaseEstimator
         A fitted supported estimator.
     X : array-like of shape (n_samples, n_features)
-        The same training design matrix used to fit ``model``.
+        The same dense or CSR/CSC training design matrix used to fit ``model``.
     y : array-like of shape (n_samples,)
         The same training targets used to fit ``model``.
     sample_weight : float or array-like of shape (n_samples,), optional
@@ -212,7 +221,7 @@ def map_sklearn(
         raise ValueError("Both X and y must be provided.")
 
     X_checked = sklearn.utils.validation.check_array(
-        X, accept_sparse=False, ensure_2d=True, dtype="numeric"
+        X, accept_sparse=("csr", "csc"), ensure_2d=True, dtype="numeric"
     )
     y_checked = np.asarray(y)
     if y_checked.ndim != 1:
