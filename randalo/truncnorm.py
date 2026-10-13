@@ -94,11 +94,21 @@ def truncnorm_mean(
     beta = (b - mu) / sigma
 
     nan = torch.isnan(alpha) | torch.isnan(beta)
+    # On CPU, avoid gathering and scattering every coordinate when no endpoint
+    # is NaN. Keep the masked path on accelerators to avoid a host sync.
+    if mu.device.type == "cpu" and not torch.any(nan):
+        log_mass = _log_gauss_mass(alpha, beta)
+        pA = torch.exp(_norm_logpdf(alpha) - log_mass)
+        pB = torch.exp(_norm_logpdf(beta) - log_mass)
+        return mu - sigma * (pB - pA)
     notnan = ~nan
     alpha = alpha[notnan]
     beta = beta[notnan]
-    alpha_beta = torch.stack([alpha, beta], dim=0)
-    pA, pB = _truncnorm_pdf(alpha_beta, alpha[None, :], beta[None, :])
+    # Both endpoint densities have the same interval normalization. Computing
+    # it before evaluating the endpoints avoids broadcasting it twice.
+    log_mass = _log_gauss_mass(alpha, beta)
+    pA = torch.exp(_norm_logpdf(alpha) - log_mass)
+    pB = torch.exp(_norm_logpdf(beta) - log_mass)
 
     out = torch.full_like(mu, float("nan"))
     out[nan] = torch.clamp(mu[nan], min=a[nan], max=b[nan])
