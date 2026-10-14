@@ -1,7 +1,7 @@
 """Interleaved CPU benchmark against a Git revision of the public scoring API.
 
 Run from any directory, for example:
-    python benchmarks/profile_scoring.py --baseline-ref HEAD --output timings.json
+    python benchmarks/profile_scoring.py --baseline-ref origin/main --output timings.json
 
 The baseline source is loaded without changing the checkout. Full API timings
 use fresh probe caches; cached timings and truncated-normal timings isolate the
@@ -212,7 +212,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--baseline-ref", default="HEAD")
+    parser.add_argument("--baseline-ref", default="origin/main")
     parser.add_argument("--rows", type=int, default=20_000)
     parser.add_argument("--features", type=int, default=128)
     parser.add_argument("--threads", type=int, nargs="+", default=[1, 4])
