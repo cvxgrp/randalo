@@ -132,10 +132,17 @@ class RandALO(object):
         mus = self._normalized_diag_jac_estims[:, :n_matvecs] @ mixing_matrix
         m_primes = torch.sum(mixing_matrix > 0, dim=0, keepdim=True)
         normalized_diag_jacs = self._uniform_map_estimates(mus, m_primes)
-        y_tildes = [
-            self._y_tilde_from_normalized_jac(normalized_diag_jacs[:, j])
-            for j in range(len(subsets))
-        ]
+        if self._y_hat.ndim == 1 and self._a_c.ndim == 1:
+            # Store subsets as rows so each callback still receives a contiguous
+            # one-dimensional prediction vector. Batch only the correction;
+            # arbitrary user risk functions retain their per-subset semantics.
+            diagonal = normalized_diag_jacs.T.contiguous().clamp(0, 1)
+            y_tildes = self._y_hat + self._a_c * diagonal / (1 - diagonal)
+        else:
+            y_tildes = [
+                self._y_tilde_from_normalized_jac(normalized_diag_jacs[:, j])
+                for j in range(len(subsets))
+            ]
         risks = [risk_fun(self._y, y_tilde) for y_tilde in y_tildes]
         # return utils.robust_y_intercept(1 / m_primes, risks), m_primes, risks
         return utils.robust_y_intercept(1 / m_primes, risks)
